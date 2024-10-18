@@ -13,12 +13,14 @@ function drawState(state) {
         context.fillText("H" + house.id, house.x + 5, house.y - 5);  // House ID
     });
 
-    // Draw hospital
-    const hospital = state.hospital;
-    context.fillStyle = "blue";
-    context.fillRect(hospital.x, hospital.y, 40, 40);
-    context.fillStyle = "black";
-    context.fillText("Hosp" + hospital.id, hospital.x + 5, hospital.y - 5);  // Hospital ID
+    // Draw hospitals and display patient lists
+    state.hospitals.forEach(function(hospital) {
+        context.fillStyle = "blue";
+        context.fillRect(hospital.x, hospital.y, 40, 40);
+        context.fillStyle = "black";
+        context.fillText("Hosp" + hospital.id, hospital.x + 5, hospital.y - 5);  // Hospital ID
+        context.fillText("Patients: " + hospital.patients.join(", "), hospital.x - 20, hospital.y + 50);  // Patient list
+    });
 
     // Draw ambulances
     state.ambulances.forEach(function(ambulance) {
@@ -29,6 +31,7 @@ function drawState(state) {
     });
 }
 
+// Handle socket events
 socket.on('update_state', function(state) {
     drawState(state);
 });
