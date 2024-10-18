@@ -2,6 +2,7 @@ const canvas = document.getElementById('simulationCanvas');
 const context = canvas.getContext('2d');
 const socket = io();
 
+// Draw the state of the simulation (houses, ambulances, hospitals)
 function drawState(state) {
     context.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -31,7 +32,22 @@ function drawState(state) {
     });
 }
 
-// Handle socket events
+// Update the event log in the text box
+function updateLog(log) {
+    const logContainer = document.getElementById('eventLog');
+    logContainer.innerHTML = '';  // Clear the log
+    log.forEach(function(event) {
+        const li = document.createElement('li');
+        li.textContent = event;
+        logContainer.appendChild(li);
+    });
+}
+
+// Handle socket events for state updates and log updates
 socket.on('update_state', function(state) {
     drawState(state);
+});
+
+socket.on('update_log', function(log) {
+    updateLog(log);
 });

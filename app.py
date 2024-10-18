@@ -4,6 +4,7 @@ import random
 import time
 from threading import Thread
 import math
+from datetime import datetime
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -20,13 +21,13 @@ class Ambulance:
 
     def move_to(self, target_x, target_y):
         if self.x < target_x:
-            self.x += 1
+            self.x += 2
         elif self.x > target_x:
-            self.x -= 1
+            self.x -= 2
         if self.y < target_y:
-            self.y += 1
+            self.y += 2
         elif self.y > target_y:
-            self.y -= 1
+            self.y -= 2
 
 class House:
     def __init__(self, id, x, y):
@@ -50,10 +51,19 @@ class Hospital:
 def calculate_distance(x1, y1, x2, y2):
     return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
-# Setup: 3 ambulances, 5 houses, and 3 hospitals
-ambulances = [Ambulance(i, random.randint(50, 100), random.randint(50, 300)) for i in range(3)]
-houses = [House(i, 50, 50 + i * 100) for i in range(5)]
+# Set the number of ambulances to 5 and houses to 10
+ambulances = [Ambulance(i, random.randint(50, 100), random.randint(50, 300)) for i in range(5)]
+houses = [House(i, 50, 50 + i * 40) for i in range(10)]
 hospitals = [Hospital(i, 450, 50 + i * 100) for i in range(3)]
+
+event_log = []
+
+def log_event(message):
+    timestamp = datetime.now().strftime('%H:%M:%S')
+    event_log.insert(0, f"{timestamp} - {message}")
+    if len(event_log) > 10:  # Keep only the last 10 events
+        event_log.pop()
+    socketio.emit('update_log', event_log)
 
 def generate_patients():
     """Randomly assigns patients to houses."""
@@ -62,6 +72,7 @@ def generate_patients():
         if not random_house.has_patient and not random_house.ambulance_on_the_way:
             random_house.has_patient = True
             random_house.patient_id = random.randint(1000, 9999)  # Assign unique patient ID
+            log_event(f"Patient {random_house.patient_id} is at House {random_house.id}")
         socketio.emit('update_state', get_state())
         time.sleep(5)
 
@@ -70,7 +81,6 @@ def move_ambulances():
     while True:
         for ambulance in ambulances:
             if ambulance.is_available:
-                # Check if there's a house with a patient and no ambulance on the way
                 patient_house = next((house for house in houses if house.has_patient and not house.ambulance_on_the_way), None)
                 if patient_house:
                     ambulance.is_available = False
@@ -78,6 +88,7 @@ def move_ambulances():
                     ambulance.state = 'red'  # Heading to pick up a patient
                     patient_house.ambulance_on_the_way = True
                     ambulance.patient_id = patient_house.patient_id  # Assign patient ID to ambulance
+                    log_event(f"Ambulance {ambulance.id} is heading to House {patient_house.id} to pick up Patient {patient_house.patient_id}")
             elif ambulance.target:
                 # Move ambulance to the target (house or hospital)
                 target_x, target_y = ambulance.target
@@ -91,16 +102,17 @@ def move_ambulances():
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
                         ambulance.target = (nearest_hospital.x, nearest_hospital.y)
                         ambulance.state = 'yellow'  # Has patient, heading to hospital
+                        log_event(f"Ambulance {ambulance.id} picked up Patient {ambulance.patient_id} from House {patient_house.id} and is heading to Hospital {nearest_hospital.id}")
                     elif ambulance.x == ambulance.target[0] and ambulance.y == ambulance.target[1]:
-                        # Drop off patient at hospital
                         nearest_hospital.add_patient(ambulance.patient_id)
+                        log_event(f"Ambulance {ambulance.id} has delivered Patient {ambulance.patient_id} to Hospital {nearest_hospital.id}")
                         ambulance.is_available = True
                         ambulance.state = 'green'  # Free to pick up another patient
                         ambulance.target = None
                         ambulance.patient_id = None
 
         socketio.emit('update_state', get_state())
-        time.sleep(0.1)
+        time.sleep(0.05)  # Reduce the sleep time to make the simulation feel faster
 
 def find_nearest_hospital(x, y):
     """Find the nearest hospital to the given coordinates."""
@@ -108,7 +120,7 @@ def find_nearest_hospital(x, y):
     return nearest_hospital
 
 def get_state():
-    """Returns the state of ambulances, houses, and hospitals."""
+    """Returns the state of ambulances, houses, hospitals, and logs."""
     return {
         'ambulances': [{'id': a.id, 'x': a.x, 'y': a.y, 'state': a.state} for a in ambulances],
         'houses': [{'id': h.id, 'x': h.x, 'y': h.y, 'has_patient': h.has_patient, 'ambulance_on_the_way': h.ambulance_on_the_way} for h in houses],
@@ -121,6 +133,7 @@ def index():
 
 @socketio.on('connect')
 def handle_connect():
+    emit('update_log', event_log)  # Send the log when a client connects
     emit('update_state', get_state())
 
 # Start background threads for simulation
