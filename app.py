@@ -51,10 +51,15 @@ class Hospital:
 def calculate_distance(x1, y1, x2, y2):
     return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
-# Set the number of ambulances to 5 and houses to 10
-ambulances = [Ambulance(i, random.randint(50, 100), random.randint(50, 300)) for i in range(5)]
+# Set the number of houses to 10
 houses = [House(i, 50, 50 + i * 40) for i in range(10)]
 hospitals = [Hospital(i, 450, 50 + i * 100) for i in range(3)]
+
+# Initialize ambulances at the hospitals, equally distributed
+ambulances = []
+for i in range(5):
+    hospital = hospitals[i % len(hospitals)]  # Distribute ambulances evenly across hospitals
+    ambulances.append(Ambulance(i, hospital.x, hospital.y))
 
 event_log = []
 
@@ -120,7 +125,7 @@ def find_nearest_hospital(x, y):
     return nearest_hospital
 
 def get_state():
-    """Returns the state of ambulances, houses, hospitals, and logs."""
+    """Returns the state of ambulances, houses, and hospitals."""
     return {
         'ambulances': [{'id': a.id, 'x': a.x, 'y': a.y, 'state': a.state} for a in ambulances],
         'houses': [{'id': h.id, 'x': h.x, 'y': h.y, 'has_patient': h.has_patient, 'ambulance_on_the_way': h.ambulance_on_the_way} for h in houses],
