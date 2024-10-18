@@ -20,3 +20,9 @@ pip install flask flask-socketio
 ```bash
 python app.py
 ```
+
+# Todo
+Make more than one patient in a house
+Display the patient id in an array in either house, ambo or hospital
+Add wait time
+Assign nearest available ambulance
