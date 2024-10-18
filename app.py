@@ -7,7 +7,6 @@ from threading import Thread
 app = Flask(__name__)
 socketio = SocketIO(app)
 
-# Simple classes for Ambulance, House (with patient), and Hospital
 class Ambulance:
     def __init__(self, id, x, y):
         self.id = id
@@ -15,9 +14,9 @@ class Ambulance:
         self.y = y
         self.target = None
         self.is_available = True
+        self.state = 'green'  # green means available
 
     def move_to(self, target_x, target_y):
-        # Simple movement logic, moving one step at a time
         if self.x < target_x:
             self.x += 1
         elif self.x > target_x:
@@ -33,6 +32,7 @@ class House:
         self.x = x
         self.y = y
         self.has_patient = False
+        self.ambulance_on_the_way = False
 
 class Hospital:
     def __init__(self, id, x, y):
@@ -40,7 +40,6 @@ class Hospital:
         self.x = x
         self.y = y
 
-# Setup: 3 ambulances, 5 houses, and 1 hospital
 ambulances = [Ambulance(i, random.randint(50, 100), random.randint(50, 300)) for i in range(3)]
 houses = [House(i, 50, 50 + i * 100) for i in range(5)]
 hospital = Hospital(1, 450, 200)
@@ -49,8 +48,9 @@ def generate_patients():
     """Randomly assigns patients to houses."""
     while True:
         random_house = random.choice(houses)
-        if not random_house.has_patient:
+        if not random_house.has_patient and not random_house.ambulance_on_the_way:
             random_house.has_patient = True
+            random_house.ambulance_on_the_way = False
         socketio.emit('update_state', get_state())
         time.sleep(5)
 
@@ -59,13 +59,14 @@ def move_ambulances():
     while True:
         for ambulance in ambulances:
             if ambulance.is_available:
-                # Check if there's a house with a patient
-                patient_house = next((house for house in houses if house.has_patient), None)
+                patient_house = next((house for house in houses if house.has_patient and not house.ambulance_on_the_way), None)
                 if patient_house:
                     ambulance.is_available = False
                     ambulance.target = (patient_house.x, patient_house.y)
+                    ambulance.state = 'red'  # Heading to pick up a patient
+                    patient_house.ambulance_on_the_way = True
             elif ambulance.target:
-                # Move ambulance to the target
+                # Move ambulance to the target (house or hospital)
                 target_x, target_y = ambulance.target
                 ambulance.move_to(target_x, target_y)
 
@@ -73,12 +74,12 @@ def move_ambulances():
                 if ambulance.x == target_x and ambulance.y == target_y:
                     patient_house = next((house for house in houses if house.x == target_x and house.y == target_y), None)
                     if patient_house and patient_house.has_patient:
-                        # Pick up patient and head to hospital
                         patient_house.has_patient = False
                         ambulance.target = (hospital.x, hospital.y)
+                        ambulance.state = 'yellow'  # Has patient, heading to hospital
                     elif ambulance.x == hospital.x and ambulance.y == hospital.y:
-                        # Drop off patient at hospital
                         ambulance.is_available = True
+                        ambulance.state = 'green'  # Free to pick up another patient
                         ambulance.target = None
 
         socketio.emit('update_state', get_state())
@@ -87,8 +88,8 @@ def move_ambulances():
 def get_state():
     """Returns the state of ambulances, houses, and hospital."""
     return {
-        'ambulances': [{'id': a.id, 'x': a.x, 'y': a.y, 'available': a.is_available} for a in ambulances],
-        'houses': [{'id': h.id, 'x': h.x, 'y': h.y, 'has_patient': h.has_patient} for h in houses],
+        'ambulances': [{'id': a.id, 'x': a.x, 'y': a.y, 'state': a.state} for a in ambulances],
+        'houses': [{'id': h.id, 'x': h.x, 'y': h.y, 'has_patient': h.has_patient, 'ambulance_on_the_way': h.ambulance_on_the_way} for h in houses],
         'hospital': {'id': hospital.id, 'x': hospital.x, 'y': hospital.y}
     }
 
