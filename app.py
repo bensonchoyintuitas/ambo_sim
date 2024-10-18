@@ -51,9 +51,9 @@ class Hospital:
 def calculate_distance(x1, y1, x2, y2):
     return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
-# Set the number of houses to 10
+# Set the number of houses to 10 and hospitals to 3
 houses = [House(i, 50, 50 + i * 40) for i in range(10)]
-hospitals = [Hospital(i, 450, 50 + i * 100) for i in range(3)]
+hospitals = [Hospital(i, 450, 50 + i * 200) for i in range(3)]
 
 # Initialize ambulances at the hospitals, equally distributed
 ambulances = []
@@ -70,22 +70,27 @@ def log_event(message):
         event_log.pop()
     socketio.emit('update_log', event_log)
 
-def generate_patients():
-    """Randomly assigns patients to houses."""
+def generate_random_patient():
+    """Generate a patient at a random house."""
+    random_house = random.choice(houses)
+    if not random_house.has_patient and not random_house.ambulance_on_the_way:
+        random_house.has_patient = True
+        random_house.patient_id = random.randint(1000, 9999)  # Assign unique patient ID
+        log_event(f"Patient {random_house.patient_id} is at House {random_house.id}")
+    socketio.emit('update_state', get_state())
+
+def generate_patients_automatically():
+    """Randomly assigns patients to houses between 5 to 15 seconds."""
     while True:
-        random_house = random.choice(houses)
-        if not random_house.has_patient and not random_house.ambulance_on_the_way:
-            random_house.has_patient = True
-            random_house.patient_id = random.randint(1000, 9999)  # Assign unique patient ID
-            log_event(f"Patient {random_house.patient_id} is at House {random_house.id}")
-        socketio.emit('update_state', get_state())
-        time.sleep(5)
+        generate_random_patient()
+        time.sleep(random.randint(5, 15))  # Wait between 5 and 15 seconds
 
 def move_ambulances():
     """Move ambulances to pick up patients and take them to the nearest hospital."""
     while True:
         for ambulance in ambulances:
             if ambulance.is_available:
+                # Check if there's a house with a patient and no ambulance on the way
                 patient_house = next((house for house in houses if house.has_patient and not house.ambulance_on_the_way), None)
                 if patient_house:
                     ambulance.is_available = False
@@ -109,6 +114,8 @@ def move_ambulances():
                         ambulance.state = 'yellow'  # Has patient, heading to hospital
                         log_event(f"Ambulance {ambulance.id} picked up Patient {ambulance.patient_id} from House {patient_house.id} and is heading to Hospital {nearest_hospital.id}")
                     elif ambulance.x == ambulance.target[0] and ambulance.y == ambulance.target[1]:
+                        # If ambulance reached the hospital, append patient ID to that hospital's array
+                        nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
                         nearest_hospital.add_patient(ambulance.patient_id)
                         log_event(f"Ambulance {ambulance.id} has delivered Patient {ambulance.patient_id} to Hospital {nearest_hospital.id}")
                         ambulance.is_available = True
@@ -141,8 +148,26 @@ def handle_connect():
     emit('update_log', event_log)  # Send the log when a client connects
     emit('update_state', get_state())
 
+@socketio.on('create_patient')
+def handle_create_patient():
+    """Handle button click to create a patient."""
+    print('Create Patient event received')  # Debugging output
+    generate_random_patient()
+
+@socketio.on('create_patient_at_house')
+def handle_create_patient_at_house(data):
+    """Handle creating a patient at a specific house when the house is clicked."""
+    house_id = data['house_id']
+    house = next((h for h in houses if h.id == house_id), None)
+
+    if house and not house.has_patient:  # Only create patient if the house is green (no patient)
+        house.has_patient = True
+        house.patient_id = random.randint(1000, 9999)  # Assign unique patient ID
+        log_event(f"Patient {house.patient_id} is at House {house.id}")
+        socketio.emit('update_state', get_state())  # Update the state after creating the patient
+
 # Start background threads for simulation
-Thread(target=generate_patients).start()
+Thread(target=generate_patients_automatically).start()
 Thread(target=move_ambulances).start()
 
 if __name__ == '__main__':

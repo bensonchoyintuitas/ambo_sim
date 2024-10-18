@@ -2,9 +2,33 @@ const canvas = document.getElementById('simulationCanvas');
 const context = canvas.getContext('2d');
 const socket = io();
 
+// Track the state of houses (for clicking)
+let housesState = [];
+
+// Handle clicks on the canvas to create a patient at the clicked house if it's green
+canvas.addEventListener('click', function(event) {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    // Check if the click is on a house
+    housesState.forEach(function(house) {
+        const houseSize = 20;
+        if (
+            x >= house.x && x <= house.x + houseSize &&
+            y >= house.y && y <= house.y + houseSize &&
+            !house.has_patient  // Only allow creating patient if the house is green (no patient)
+        ) {
+            console.log(`Clicked on House ${house.id}, creating patient.`);
+            socket.emit('create_patient_at_house', { house_id: house.id });  // Emit event with house ID
+        }
+    });
+});
+
 // Draw the state of the simulation (houses, ambulances, hospitals)
 function drawState(state) {
     context.clearRect(0, 0, canvas.width, canvas.height);
+    housesState = state.houses;  // Update housesState for click handling
 
     // Draw houses
     state.houses.forEach(function(house) {
@@ -45,9 +69,11 @@ function updateLog(log) {
 
 // Handle socket events for state updates and log updates
 socket.on('update_state', function(state) {
+    console.log('State updated');  // Debugging output
     drawState(state);
 });
 
 socket.on('update_log', function(log) {
+    console.log('Log updated');  // Debugging output
     updateLog(log);
 });
