@@ -1,6 +1,9 @@
 const canvas = document.getElementById('simulationCanvas');
 const context = canvas.getContext('2d');
 
+// Set a font for the text
+context.font = '16px Arial';
+
 // Ensure the canvas size is set correctly
 canvas.width = 800;
 canvas.height = 650;
@@ -85,22 +88,87 @@ socket.on('update_log', function(log) {
 
 function renderHouses(houses) {
     houses.forEach(house => {
-        const label = `H${house.id}: [${house.patient_ids.join(', ')}]`;
-        // Code to draw the house and label on the canvas
-        // Example: context.fillText(label, house.x, house.y);
+        // Determine the color based on the house state
+        if (house.ambulance_on_the_way) {
+            context.fillStyle = 'yellow'; // Color when an ambulance is on the way
+        } else if (house.patient_ids.length > 0) {
+            context.fillStyle = 'red'; // Color when there are patients
+        } else {
+            context.fillStyle = 'green'; // Color when the house is empty
+        }
+
+        // Draw the house as a smaller square
+        const houseSize = 20; // Size of the square
+        context.fillRect(house.x, house.y, houseSize, houseSize);
+
+        // Draw the house label
+        const houseLabel = `H${house.id}`;
+        context.fillStyle = 'black';
+        context.fillText(houseLabel, house.x, house.y - 5); // Position label above the house
+
+        // Draw the patient IDs below the house if there are any
+        if (house.patient_ids.length > 0) {
+            const patientLabel = `Patients: [${house.patient_ids.join(', ')}]`;
+            context.fillText(patientLabel, house.x, house.y + houseSize + 15); // Position label below the house
+        }
     });
 }
 
-// Example function to update the state and render
-function updateState(state) {
-    renderHouses(state.houses);
-    // Render other elements like ambulances and hospitals
+function renderHospitals(hospitals) {
+    hospitals.forEach(hospital => {
+        // Draw the hospital
+        context.fillStyle = 'blue'; // Color for hospitals
+        const hospitalSize = 30; // Size of the square
+        context.fillRect(hospital.x, hospital.y, hospitalSize, hospitalSize);
+
+        // Draw the hospital label
+        const hospitalLabel = `Hospital ${hospital.id}`;
+        context.fillStyle = 'black';
+        context.fillText(hospitalLabel, hospital.x, hospital.y - 5); // Position label above the hospital
+
+        // Optionally, draw patient IDs or other info related to the hospital
+        const patientsLabel = `Patients: [${hospital.patients.join(', ')}]`;
+        context.fillText(patientsLabel, hospital.x, hospital.y + hospitalSize + 15); // Position label below the hospital
+    });
 }
 
-// Assuming you have a socket.io connection to receive state updates
-socket.on('update_state', (state) => {
-    updateState(state);
-});
+function renderAmbulances(ambulances) {
+    ambulances.forEach(ambulance => {
+        // Log the state for debugging
+        console.log(`Ambulance ${ambulance.id} state: ${ambulance.state}`);
+
+        // Determine the color based on the ambulance state
+        switch (ambulance.state) {
+            case 'green':
+                context.fillStyle = 'green'; // Available
+                break;
+            case 'red':
+                context.fillStyle = 'red'; // En route to pick up a patient
+                break;
+            case 'yellow':
+                context.fillStyle = 'yellow'; // Transporting a patient
+                break;
+            default:
+                context.fillStyle = 'gray'; // Default color for unknown state
+        }
+
+        // Draw the ambulance
+        const ambulanceSize = 15; // Size of the square
+        context.fillRect(ambulance.x, ambulance.y, ambulanceSize, ambulanceSize);
+
+        // Draw the ambulance label
+        const ambulanceLabel = `A${ambulance.id}`;
+        context.fillStyle = 'black';
+        context.fillText(ambulanceLabel, ambulance.x, ambulance.y - 5); // Position label above the ambulance
+    });
+}
+
+function updateState(state) {
+    context.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+    renderHouses(state.houses);
+    renderHospitals(state.hospitals);
+    renderAmbulances(state.ambulances);
+}
 
 document.getElementById('resetButton').addEventListener('click', () => {
     socket.emit('reset_simulation');
@@ -113,13 +181,3 @@ socket.on('update_state', (state) => {
 socket.on('update_log', (log) => {
     updateLog(log);
 });
-
-function updateLog(log) {
-    const logContainer = document.getElementById('eventLog');
-    logContainer.innerHTML = '';
-    log.forEach(event => {
-        const li = document.createElement('li');
-        li.textContent = event;
-        logContainer.appendChild(li);
-    });
-}

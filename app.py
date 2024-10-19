@@ -130,6 +130,9 @@ def move_ambulances():
                     patient_house = next((house for house in houses if house.x == target_x and house.y == target_y), None)
                     if patient_house and patient_house.patient_ids:
                         patient_house.remove_patient(ambulance.patient_id)
+                        if not patient_house.patient_ids:
+                            patient_house.ambulance_on_the_way = False  # Reset ambulance flag
+                            log_event(f"House {patient_house.id} is now empty and reverts to green.")
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
                         ambulance.target = (nearest_hospital.x, nearest_hospital.y)
                         ambulance.state = 'yellow'  # Has patient, heading to hospital
