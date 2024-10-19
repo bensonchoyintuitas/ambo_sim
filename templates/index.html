@@ -14,30 +14,46 @@
             margin: 0;
             padding: 0;
             font-family: Arial, sans-serif;
+            overflow: hidden; /* Prevent scrollbars */
+        }
+        #content {
+            display: flex;
+            justify-content: flex-start;
+            align-items: flex-start;
+            width: 100%;
+            flex-grow: 1;
+            padding-left: 50px; /* Add space from the left edge */
+            box-sizing: border-box; /* Include padding in width calculation */
+        }
+        #simulationCanvas {
+            border: 1px solid black;
+            margin-right: 20px; /* Margin between canvas and event log */
+        }
+        #logContainer {
+            border: 1px solid black;
+            padding: 10px;
+            width: 350px; /* Make the event log slightly wider */
+            height: 100%; /* Use full available height */
+            overflow-y: auto; /* Enable scrolling if content overflows */
+            box-sizing: border-box; /* Include padding in height calculation */
         }
         #resetButton {
             margin-bottom: 20px;
             padding: 10px 20px;
             font-size: 16px;
         }
-        canvas {
-            border: 1px solid black;
-        }
-        #logContainer {
-            flex-grow: 1;
-            overflow-y: auto;
-        }
     </style>
 </head>
 <body>
     <h1>Ambulance Simulation</h1>
-    <canvas id="simulationCanvas" width="800" height="1000"></canvas>
-
-    <div id="logContainer">
-        <h2>Event Log</h2>
-        <ul id="eventLog">
-            <!-- Events will be dynamically inserted here -->
-        </ul>
+    <div id="content">
+        <canvas id="simulationCanvas" width="800" height="1000"></canvas>
+        <div id="logContainer">
+            <h2>Event Log</h2>
+            <ul id="eventLog">
+                <!-- Events will be dynamically inserted here -->
+            </ul>
+        </div>
     </div>
 
     <button id="resetButton">Reset Simulation</button>
