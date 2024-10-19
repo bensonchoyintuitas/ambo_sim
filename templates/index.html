@@ -9,11 +9,13 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: space-between;
+            height: 100vh;
             margin: 0;
             padding: 0;
+            font-family: Arial, sans-serif;
         }
         #resetButton {
-            margin-top: 20px;
             margin-bottom: 20px;
             padding: 10px 20px;
             font-size: 16px;
@@ -21,10 +23,13 @@
         canvas {
             border: 1px solid black;
         }
+        #logContainer {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
-    <button id="resetButton">Reset Simulation</button>
     <h1>Ambulance Simulation</h1>
     <canvas id="simulationCanvas" width="800" height="1000"></canvas>
 
@@ -34,6 +39,8 @@
             <!-- Events will be dynamically inserted here -->
         </ul>
     </div>
+
+    <button id="resetButton">Reset Simulation</button>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="/static/script.js"></script>
