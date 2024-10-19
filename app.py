@@ -133,6 +133,22 @@ def move_ambulances():
                         if not patient_house.patient_ids:
                             patient_house.ambulance_on_the_way = False  # Reset ambulance flag
                             log_event(f"House {patient_house.id} is now empty and reverts to green.")
+                        else:
+                            # Check if another ambulance is needed
+                            available_ambulances = [a for a in ambulances if a.is_available]
+                            if available_ambulances:
+                                # Assign another ambulance to the remaining patients
+                                next_ambulance = min(
+                                    available_ambulances,
+                                    key=lambda a: calculate_distance(a.x, a.y, patient_house.x, patient_house.y)
+                                )
+                                next_ambulance.is_available = False
+                                next_ambulance.target = (patient_house.x, patient_house.y)
+                                next_ambulance.state = 'red'
+                                next_ambulance.patient_id = patient_house.patient_ids[0]
+                                log_event(f"Ambulance {next_ambulance.id} is heading to House {patient_house.id} to pick up Patient {next_ambulance.patient_id}")
+                            else:
+                                patient_house.ambulance_on_the_way = False  # No available ambulances
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
                         ambulance.target = (nearest_hospital.x, nearest_hospital.y)
                         ambulance.state = 'yellow'  # Has patient, heading to hospital
