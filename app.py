@@ -9,6 +9,12 @@ from datetime import datetime
 app = Flask(__name__)
 socketio = SocketIO(app)
 
+class Patient:
+    def __init__(self, id, name, condition):
+        self.id = id
+        self.name = name
+        self.condition = condition
+
 class Ambulance:
     def __init__(self, id, x, y):
         self.id = id
@@ -21,13 +27,13 @@ class Ambulance:
 
     def move_to(self, target_x, target_y):
         if self.x < target_x:
-            self.x += 2
+            self.x += 4  # Move twice as fast
         elif self.x > target_x:
-            self.x -= 2
+            self.x -= 4  # Move twice as fast
         if self.y < target_y:
-            self.y += 2
+            self.y += 4  # Move twice as fast
         elif self.y > target_y:
-            self.y -= 2
+            self.y -= 4  # Move twice as fast
 
 class House:
     def __init__(self, id, x, y):
@@ -51,8 +57,15 @@ class Hospital:
 def calculate_distance(x1, y1, x2, y2):
     return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
+# Sample lists of first and last names
+first_names = ["John", "Jane", "Alex", "Emily", "Chris", "Katie", "Michael", "Sarah"]
+last_names = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis"]
+
+# Define a list of possible patient conditions
+conditions = ["Fell down stairs", "Critical burn", "Can't breathe", "Majorly bad breath"]
+
 # Set the number of houses to 10 and hospitals to 3
-houses = [House(i, 50, 50 + i * 40) for i in range(10)]
+houses = [House(i, 50, 50 + i * 60) for i in range(10)]
 hospitals = [Hospital(i, 450, 50 + i * 200) for i in range(3)]
 
 # Initialize ambulances at the hospitals, equally distributed
@@ -70,20 +83,19 @@ def log_event(message):
         event_log.pop()
     socketio.emit('update_log', event_log)
 
+
 def generate_random_patient():
     """Generate a patient at a random house."""
     random_house = random.choice(houses)
     if not random_house.has_patient and not random_house.ambulance_on_the_way:
+        patient_id = random.randint(1000, 9999)  # Assign unique patient ID
+        condition = random.choice(conditions)  # Randomly select a condition
+        name = f"{random.choice(first_names)} {random.choice(last_names)}"  # Generate random name
+        patient = Patient(patient_id, name, condition)
         random_house.has_patient = True
-        random_house.patient_id = random.randint(1000, 9999)  # Assign unique patient ID
-        log_event(f"Patient {random_house.patient_id} is at House {random_house.id}")
+        random_house.patient_id = patient.id
+        log_event(f"Patient {patient.name} (ID: {patient.id}) with condition {patient.condition} is at House {random_house.id}")
     socketio.emit('update_state', get_state())
-
-def generate_patients_automatically():
-    """Randomly assigns patients to houses between 5 to 15 seconds."""
-    while True:
-        generate_random_patient()
-        time.sleep(random.randint(5, 15))  # Wait between 5 and 15 seconds
 
 def move_ambulances():
     """Move ambulances to pick up patients and take them to the nearest hospital."""
@@ -161,10 +173,20 @@ def handle_create_patient_at_house(data):
     house = next((h for h in houses if h.id == house_id), None)
 
     if house and not house.has_patient:  # Only create patient if the house is green (no patient)
+        patient_id = random.randint(1000, 9999)  # Assign unique patient ID
+        condition = random.choice(conditions)  # Randomly select a condition
+        name = f"{random.choice(first_names)} {random.choice(last_names)}"  # Generate random name
+        patient = Patient(patient_id, name, condition)
         house.has_patient = True
-        house.patient_id = random.randint(1000, 9999)  # Assign unique patient ID
-        log_event(f"Patient {house.patient_id} is at House {house.id}")
-        socketio.emit('update_state', get_state())  # Update the state after creating the patient
+        house.patient_id = patient.id
+        log_event(f"Patient {patient.name} (ID: {patient.id}) with condition {patient.condition} is at House {house.id}")
+        socketio.emit('update_state', get_state())
+
+def generate_patients_automatically():
+    """Automatically generate patients at random intervals."""
+    while True:
+        generate_random_patient()
+        time.sleep(random.randint(5, 15))  # Random interval between 5 to 15 seconds
 
 # Start background threads for simulation
 Thread(target=generate_patients_automatically).start()
