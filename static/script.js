@@ -64,8 +64,8 @@ function drawState(state) {
 // Update the event log in the text box
 function updateLog(log) {
     const logContainer = document.getElementById('eventLog');
-    logContainer.innerHTML = '';  // Clear the log
-    log.forEach(function(event) {
+    logContainer.innerHTML = '';
+    log.forEach(event => {
         const li = document.createElement('li');
         li.textContent = event;
         logContainer.appendChild(li);
@@ -82,3 +82,44 @@ socket.on('update_log', function(log) {
     console.log('Log updated');  // Debugging output
     updateLog(log);
 });
+
+function renderHouses(houses) {
+    houses.forEach(house => {
+        const label = `H${house.id}: [${house.patient_ids.join(', ')}]`;
+        // Code to draw the house and label on the canvas
+        // Example: context.fillText(label, house.x, house.y);
+    });
+}
+
+// Example function to update the state and render
+function updateState(state) {
+    renderHouses(state.houses);
+    // Render other elements like ambulances and hospitals
+}
+
+// Assuming you have a socket.io connection to receive state updates
+socket.on('update_state', (state) => {
+    updateState(state);
+});
+
+document.getElementById('resetButton').addEventListener('click', () => {
+    socket.emit('reset_simulation');
+});
+
+socket.on('update_state', (state) => {
+    updateState(state);
+});
+
+socket.on('update_log', (log) => {
+    updateLog(log);
+});
+
+function updateLog(log) {
+    const logContainer = document.getElementById('eventLog');
+    logContainer.innerHTML = '';
+    log.forEach(event => {
+        const li = document.createElement('li');
+        li.textContent = event;
+        logContainer.appendChild(li);
+    });
+}
