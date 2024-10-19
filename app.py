@@ -206,7 +206,7 @@ def generate_patients_automatically():
     """Automatically generate patients at random intervals."""
     while True:
         generate_random_patient()
-        time.sleep(random.randint(5, 15))  # Random interval between 5 to 15 seconds
+        time.sleep(random.randint(1, 5))  # Random interval between 5 to 15 seconds
 
 # Start background threads for simulation
 Thread(target=generate_patients_automatically).start()
