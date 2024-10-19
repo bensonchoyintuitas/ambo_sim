@@ -1,5 +1,10 @@
 const canvas = document.getElementById('simulationCanvas');
 const context = canvas.getContext('2d');
+
+// Ensure the canvas size is set correctly
+canvas.width = 800;
+canvas.height = 650;
+
 const socket = io();
 
 // Track the state of houses (for clicking)
