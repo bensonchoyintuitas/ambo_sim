@@ -3,6 +3,7 @@ const context = canvas.getContext('2d');
 
 // Set a font for the text
 context.font = '16px Arial';
+context.fillStyle = '#ffffff'; // Set text color to white
 
 // Ensure the canvas size is set correctly
 canvas.width = 800;
@@ -42,7 +43,7 @@ function drawState(state) {
     state.houses.forEach(function(house) {
         context.fillStyle = house.has_patient ? "red" : "green";
         context.fillRect(house.x, house.y, 20, 20);
-        context.fillStyle = "black";
+        context.fillStyle = "#ffffff"; // Set text color to white
         context.fillText("H" + house.id, house.x + 5, house.y - 5);  // House ID
     });
 
@@ -50,7 +51,7 @@ function drawState(state) {
     state.hospitals.forEach(function(hospital) {
         context.fillStyle = "blue";
         context.fillRect(hospital.x, hospital.y, 40, 40);
-        context.fillStyle = "black";
+        context.fillStyle = "#ffffff"; // Set text color to white
         context.fillText("Hosp" + hospital.id, hospital.x + 5, hospital.y - 5);  // Hospital ID
         context.fillText("Patients: " + hospital.patients.join(", "), hospital.x - 20, hospital.y + 50);  // Patient list
     });
@@ -59,7 +60,7 @@ function drawState(state) {
     state.ambulances.forEach(function(ambulance) {
         context.fillStyle = ambulance.state;
         context.fillRect(ambulance.x, ambulance.y, 10, 10);
-        context.fillStyle = "black";
+        context.fillStyle = "#ffffff"; // Set text color to white
         context.fillText("Amb" + ambulance.id, ambulance.x + 5, ambulance.y - 5);  // Ambulance ID
     });
 }
@@ -102,12 +103,13 @@ function renderHouses(houses) {
         context.fillRect(house.x, house.y, houseSize, houseSize);
 
         // Draw the house label
+        context.fillStyle = '#ffffff'; // Set text color to white
         const houseLabel = `H${house.id}`;
-        context.fillStyle = 'black';
         context.fillText(houseLabel, house.x, house.y - 5); // Position label above the house
 
         // Draw the patient IDs below the house if there are any
         if (house.patient_ids.length > 0) {
+            context.fillStyle = '#ffffff'; // Set text color to white
             const patientLabel = `Patients: [${house.patient_ids.join(', ')}]`;
             context.fillText(patientLabel, house.x, house.y + houseSize + 15); // Position label below the house
         }
@@ -122,11 +124,12 @@ function renderHospitals(hospitals) {
         context.fillRect(hospital.x, hospital.y, hospitalSize, hospitalSize);
 
         // Draw the hospital label
+        context.fillStyle = '#ffffff'; // Set text color to white
         const hospitalLabel = `Hospital ${hospital.id}`;
-        context.fillStyle = 'black';
         context.fillText(hospitalLabel, hospital.x, hospital.y - 5); // Position label above the hospital
 
         // Optionally, draw patient IDs or other info related to the hospital
+        context.fillStyle = '#ffffff'; // Set text color to white
         const patientsLabel = `Patients: [${hospital.patients.join(', ')}]`;
         context.fillText(patientsLabel, hospital.x, hospital.y + hospitalSize + 15); // Position label below the hospital
     });
@@ -157,8 +160,8 @@ function renderAmbulances(ambulances) {
         context.fillRect(ambulance.x, ambulance.y, ambulanceSize, ambulanceSize);
 
         // Draw the ambulance label
+        context.fillStyle = '#ffffff'; // Set text color to white
         const ambulanceLabel = `A${ambulance.id}`;
-        context.fillStyle = 'black';
         context.fillText(ambulanceLabel, ambulance.x, ambulance.y - 5); // Position label above the ambulance
     });
 }
