@@ -29,7 +29,7 @@ class Ambulance:
         self.target = None
         self.is_available = True
         self.state = 'green'  # green means available
-        self.patient_id = None
+        self.patient = None  # Store the entire Patient object
 
     def move_to(self, target_x, target_y):
         if self.x < target_x:
@@ -137,12 +137,16 @@ def move_ambulances():
                         available_ambulances,
                         key=lambda a: calculate_distance(a.x, a.y, house.x, house.y)
                     )
-                    closest_ambulance.is_available = False
-                    closest_ambulance.target = (house.x, house.y)
-                    closest_ambulance.state = 'red'  # Heading to pick up a patient
-                    house.ambulance_on_the_way = True
-                    closest_ambulance.patient_id = house.patient_ids[0]  # Assign first patient ID to ambulance
-                    log_event(f"Ambulance {closest_ambulance.id} is heading to House {house.id} to pick up Patient {closest_ambulance.patient_id}")
+                    patient = next((p for p in patients if p.id == house.patient_ids[0]), None)
+                    if patient:
+                        closest_ambulance.is_available = False
+                        closest_ambulance.target = (house.x, house.y)
+                        closest_ambulance.state = 'red'  # Heading to pick up a patient
+                        house.ambulance_on_the_way = True
+                        closest_ambulance.patient = patient
+                        log_event(f"Ambulance {closest_ambulance.id} is heading to House {house.id} to pick up Patient {patient.id}")
+                    else:
+                        log_event(f"No patient found with ID {house.patient_ids[0]} at House {house.id}")
 
         for ambulance in ambulances:
             if ambulance.target:
@@ -154,7 +158,7 @@ def move_ambulances():
                 if ambulance.x == target_x and ambulance.y == target_y:
                     patient_house = next((house for house in houses if house.x == target_x and house.y == target_y), None)
                     if patient_house and patient_house.patient_ids:
-                        patient_house.remove_patient(ambulance.patient_id)
+                        patient_house.remove_patient(ambulance.patient.id)
                         if not patient_house.patient_ids:
                             patient_house.ambulance_on_the_way = False  # Reset ambulance flag
                             log_event(f"House {patient_house.id} is now empty and reverts to green.")
@@ -170,25 +174,25 @@ def move_ambulances():
                                 next_ambulance.is_available = False
                                 next_ambulance.target = (patient_house.x, patient_house.y)
                                 next_ambulance.state = 'red'
-                                next_ambulance.patient_id = patient_house.patient_ids[0]
-                                log_event(f"Ambulance {next_ambulance.id} is heading to House {patient_house.id} to pick up Patient {next_ambulance.patient_id}")
+                                next_ambulance.patient = next((p for p in patients if p.id == patient_house.patient_ids[0]), None)
+                                log_event(f"Ambulance {next_ambulance.id} is heading to House {patient_house.id} to pick up Patient {next_ambulance.patient.id}")
                             else:
                                 patient_house.ambulance_on_the_way = False  # No available ambulances
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
                         ambulance.target = (nearest_hospital.x, nearest_hospital.y)
                         ambulance.state = 'yellow'  # Has patient, heading to hospital
-                        log_event(f"Ambulance {ambulance.id} picked up Patient {ambulance.patient_id} from House {patient_house.id} and is heading to Hospital {nearest_hospital.id}")
+                        log_event(f"Ambulance {ambulance.id} picked up Patient {ambulance.patient.id} from House {patient_house.id} and is heading to Hospital {nearest_hospital.id}")
                     elif ambulance.x == ambulance.target[0] and ambulance.y == ambulance.target[1]:
                         # If ambulance reached the hospital, append patient object to that hospital's array
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
-                        patient = next((p for p in patients if p.id == ambulance.patient_id), None)  # Find the patient object
+                        patient = next((p for p in patients if p.id == ambulance.patient.id), None)  # Find the patient object
                         if patient:
                             nearest_hospital.add_patient_to_waiting(patient)
-                            log_event(f"Ambulance {ambulance.id} has delivered Patient {ambulance.patient_id} to Hospital {nearest_hospital.id}")
+                            log_event(f"Ambulance {ambulance.id} has delivered Patient {ambulance.patient.id} to Hospital {nearest_hospital.id}")
                         ambulance.is_available = True
                         ambulance.state = 'green'  # Free to pick up another patient
                         ambulance.target = None
-                        ambulance.patient_id = None
+                        ambulance.patient = None  # Clear the patient object
 
         socketio.emit('update_state', get_state())
         time.sleep(0.05)  # Reduce the sleep time to make the simulation feel faster
@@ -201,7 +205,7 @@ def find_nearest_hospital(x, y):
 def get_state():
     """Returns the state of ambulances, houses, and hospitals."""
     return {
-        'ambulances': [{'id': a.id, 'x': a.x, 'y': a.y, 'state': a.state} for a in ambulances],
+        'ambulances': [{'id': a.id, 'x': a.x, 'y': a.y, 'state': a.state, 'patient_id': a.patient.id if a.patient else None} for a in ambulances],
         'houses': [
             {
                 'id': h.id,
@@ -291,6 +295,7 @@ def handle_create_patient_at_house(data):
         condition = random.choice(conditions)  # Randomly select a condition
         name = f"{random.choice(first_names)} {random.choice(last_names)}"  # Generate random name
         patient = Patient(patient_id, name, condition)
+        patients.append(patient)  # Add the patient to the global list
         house.add_patient(patient.id)
         log_event(f"Patient {patient.name} (ID: {patient.id}) with condition {patient.condition} is at House {house.id}")
         socketio.emit('update_state', get_state())
@@ -336,4 +341,3 @@ def handle_reset_simulation():
 
 if __name__ == '__main__':
     socketio.run(app)
-
