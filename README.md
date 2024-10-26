@@ -18,7 +18,7 @@ pip install flask flask-socketio
 # Run
 
 ```bash
-python app.py
+python3 app.py
 ```
 
 # Todo
