@@ -2,18 +2,21 @@ import ollama
 import random
 from datetime import datetime, timezone
 import json
+import uuid
 
-def generate_fhir_resources():
+def generate_fhir_resources(patient_guid=None):
     """Generate FHIR resources for a patient and their condition."""
     # Get current time in UTC and format it
+    patient_guid = patient_guid or str(uuid.uuid4())
     current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    
     
     # Generate a random seed
     seed = random.randint(1, 1000000)
 
     prompt = f"""Using seed {seed} for randomization: Generate two valid FHIR R4 resources:
     1. A Patient resource with:
-       - random ID 
+       - Use this exact ID: {patient_guid}
        - random First and Last name (IMPORTANT: 
          * Make it truly random and unique
          * DO NOT use common names like John, Jane, Smith, etc.

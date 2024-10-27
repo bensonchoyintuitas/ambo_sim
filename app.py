@@ -7,6 +7,7 @@ import math
 from datetime import datetime
 import json
 from ai.generate_patient import generate_fhir_resources  # Add this import at the top
+import uuid
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -136,24 +137,25 @@ def generate_random_patient():
     random_house = random.choice(houses)
     
     try:
-        # Generate FHIR resources
-        print("Generating FHIR resources...")
-        fhir_resources = generate_fhir_resources()
-        print(f"FHIR resources received: {json.dumps(fhir_resources, indent=2)}")
+        # Generate GUID first
+        patient_guid = str(uuid.uuid4())
+        print(f"Generated GUID: {patient_guid}")
+        
+        # Generate FHIR resources with GUID
+        fhir_resources = generate_fhir_resources(patient_guid)
         
         patient_resource = fhir_resources['entry'][0]['resource']
         condition_resource = fhir_resources['entry'][1]['resource']
         
-        # Get patient ID
-        print("Getting patient ID...")
-        patient_id = patient_resource.get('id', '')
-        if patient_id:
-            patient_id = patient_id.replace('Patient/', '')
-        else:
-            patient_id = f"pat-{random.randint(1000, 9999)}"
+        # Use the same GUID as patient ID
+        patient_id = patient_guid
         print(f"Patient ID: {patient_id}")
         
-        # Get name - with better error handling
+        # Get DOB from patient resource
+        dob = patient_resource.get('dob')
+        print(f"DOB: {dob}")  # Debug print
+        
+        # Get name
         print("Getting patient name...")
         name_parts = patient_resource.get('name', {})
         if isinstance(name_parts, list):
@@ -174,10 +176,8 @@ def generate_random_patient():
             full_name = "Unknown Patient"
         print(f"Full name: {full_name}")
         
-        # Get DOB
-        dob = patient_resource.get('dob')
-        
-        # Get condition details
+        # Get condition details with debug output
+        print("Getting condition details...")
         condition = None
         condition_severity = None
         condition_note = None
@@ -188,19 +188,16 @@ def generate_random_patient():
             if isinstance(conditions, list) and conditions:
                 first_condition = conditions[0]
                 if isinstance(first_condition, dict):
-                    # Get condition name
                     condition = (
                         first_condition.get('display') or 
                         first_condition.get('description') or
                         first_condition.get('code', {}).get('display') or
                         first_condition.get('code', {}).get('code')
                     )
-                    # Get severity if it exists
                     if 'severity' in first_condition:
                         severity = first_condition['severity']
                         if isinstance(severity, dict):
                             condition_severity = severity.get('display') or severity.get('code')
-                    # Get note if it exists
                     condition_note = first_condition.get('note')
         
         # Then try single code
@@ -215,13 +212,11 @@ def generate_random_patient():
                     code.get('code')
                 )
             
-            # Get severity from main condition resource
             if 'severity' in condition_resource:
                 severity = condition_resource['severity']
                 if isinstance(severity, dict):
                     condition_severity = severity.get('display') or severity.get('code')
             
-            # Get note from main resource
             if 'notes' in condition_resource:
                 if isinstance(condition_resource['notes'], dict):
                     condition_note = condition_resource['notes'].get('value')
@@ -230,6 +225,13 @@ def generate_random_patient():
         
         if not condition:
             condition = "Emergency Condition"
+            
+        # Print condition details
+        print(f"Condition: {condition}")
+        if condition_severity:
+            print(f"Severity: {condition_severity}")
+        if condition_note:
+            print(f"Note: {condition_note[:100]}..." if len(condition_note) > 100 else f"Note: {condition_note}")
         
         # Create patient object with new properties
         patient = Patient(
@@ -237,7 +239,7 @@ def generate_random_patient():
             name=full_name,
             condition=condition,
             condition_severity=condition_severity,
-            dob=dob,
+            dob=dob,  # Now dob is defined
             condition_note=condition_note,
             fhir_resources=fhir_resources
         )
@@ -245,18 +247,22 @@ def generate_random_patient():
         patients.append(patient)
         random_house.add_patient(patient.id)
         
-        # Enhanced log message with new properties
-        log_message = [f"New patient - ID: {patient_id}, Name: {full_name}"]
-        log_message.append(f"Condition: {condition}")
+        # Enhanced log message with severity
+        log_parts = [
+            f"New patient - ID: {patient_id}",
+            f"Name: {full_name}",
+            f"Condition: {condition}"
+        ]
+        
         if condition_severity:
-            log_message.append(f"Severity: {condition_severity}")
+            log_parts.append(f"Severity: {condition_severity}")
         if dob:
-            log_message.append(f"DOB: {dob}")
+            log_parts.append(f"DOB: {dob}")
         if condition_note:
             note_preview = condition_note[:100] + "..." if len(condition_note) > 100 else condition_note
-            log_message.append(f"Note: {note_preview}")
+            log_parts.append(f"Note: {note_preview}")
         
-        log_event(" | ".join(log_message), event_type='patient')
+        log_event(" | ".join(log_parts), event_type='patient')
         socketio.emit('update_state', get_state())
         return patient
         
