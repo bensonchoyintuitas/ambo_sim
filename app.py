@@ -353,7 +353,7 @@ def move_ambulances():
                         patient = next((p for p in patients if p.id == ambulance.patient.id), None)  # Find the patient object
                         if patient:
                             nearest_hospital.add_patient_to_waiting(patient)
-                            log_event(f"Ambulance {ambulance.id} has delivered Patient {ambulance.patient.id} to Hospital {nearest_hospital.id}", event_type='ambulance')
+                            log_event(f"Patient {ambulance.patient.id} arrived at Hospital {nearest_hospital.id}", event_type='hospital')
                             # Add new hospital event for patient arrival
                             log_event(f"Patient {patient.id} has arrived at Hospital {nearest_hospital.id} and entered waiting queue", event_type='hospital')
                         ambulance.is_available = True
@@ -397,36 +397,34 @@ def get_state():
 
 def manage_hospital_queues():
     """Manage the movement of patients between hospital queues."""
-    hospital_lock = Lock()  # Define the lock
+    hospital_lock = Lock()
 
     while True:
         for hospital in hospitals:
-            with hospital_lock:  # Acquire the lock
+            with hospital_lock:
                 # Update wait times for patients in the waiting queue
                 if hospital.waiting:
-                    patient = hospital.waiting[0]  # Get the first patient in the waiting queue
-                    patient.wait_time += 1  # Increment wait time
+                    patient = hospital.waiting[0]
+                    patient.wait_time += 1
 
                     # Move patient to treating if wait time exceeds WAITING_TIME and there's space
                     if patient.wait_time >= WAITING_TIME and len(hospital.treating) < MAX_TREATING:
                         moved_patient = hospital.move_patient_to_treating()
                         if moved_patient:
-                            log_event(f"Patient {moved_patient.id} moved from Waiting to Treating at Hospital {hospital.id}", event_type='hospital')
-                            log_hospital_event(f"Patient {moved_patient.id} moved from Waiting to Treating at Hospital {hospital.id}")
+                            log_event(f"Patient {moved_patient.id} moved to treating at Hospital {hospital.id}", event_type='hospital')
 
                 # Update wait times for patients in the treating queue
                 for patient in hospital.treating:
-                    patient.wait_time += 1  # Increment wait time
+                    patient.wait_time += 1
 
                     # Discharge patient if wait time exceeds TREATING_TIME
                     if patient.wait_time >= TREATING_TIME:
                         discharged_patient = hospital.discharge_patient()
                         if discharged_patient:
                             log_event(f"Patient {discharged_patient.id} discharged from Hospital {hospital.id}", event_type='hospital')
-                            log_hospital_event(f"Patient {discharged_patient.id} discharged from Hospital {hospital.id}")
 
         socketio.emit('update_state', get_state())
-        time.sleep(1)  # Check every second
+        time.sleep(1)
 
 def log_hospital_event(message):
     """Log events specific to hospital operations."""

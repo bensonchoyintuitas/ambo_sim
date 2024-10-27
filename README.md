@@ -40,6 +40,7 @@ python3 app.py
 - [ ] Ambulances cannot leave if waiting
 - [x] Patients have associated FHIR resources 
 - [ ] Find a better LLM for generating FHIR resources
+- [ ] Make patient ID more unique and consistent
 
 # Stage 3
 - [ ] Use icons 
