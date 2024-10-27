@@ -7,7 +7,10 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <h1>Ambulance Simulation</h1>
+    <div class="header-container">
+        <h1>Ambulance Simulation</h1>
+        <button id="resetButton">Reset</button>
+    </div>
     <div id="content">
         <canvas id="simulationCanvas" width="800" height="1000"></canvas>
         <div class="event-logs">
@@ -25,8 +28,6 @@
             </div>
         </div>
     </div>
-
-    <button id="resetButton">Reset Simulation</button>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="/static/script.js"></script>
