@@ -130,11 +130,11 @@ def generate_random_patient():
     random_house = random.choice(houses)
     patient_id = random.randint(1000, 9999)  # Assign unique patient ID
     condition = "Unknown Condition"  # Default condition
-    name = f"Patient {patient_id}"  # Default name
+    name = f"{patient_id}"  # Remove "Patient" prefix from name
     patient = Patient(patient_id, name, condition)
     patients.append(patient)  # Add the patient to the global list
     random_house.add_patient(patient.id)
-    log_event(f"Patient {patient.name} (ID: {patient.id}) with condition {patient.condition} is at House {random_house.id}", event_type='patient')
+    log_event(f"Patient {patient.id} with condition {patient.condition} is at House {random_house.id}", event_type='patient')
     socketio.emit('update_state', get_state())
 
 def move_ambulances():
@@ -201,6 +201,8 @@ def move_ambulances():
                         if patient:
                             nearest_hospital.add_patient_to_waiting(patient)
                             log_event(f"Ambulance {ambulance.id} has delivered Patient {ambulance.patient.id} to Hospital {nearest_hospital.id}", event_type='ambulance')
+                            # Add new hospital event for patient arrival
+                            log_event(f"Patient {patient.id} has arrived at Hospital {nearest_hospital.id} and entered waiting queue", event_type='hospital')
                         ambulance.is_available = True
                         ambulance.state = 'green'  # Free to pick up another patient
                         ambulance.target = None
@@ -303,11 +305,11 @@ def handle_create_patient_at_house(data):
     if house and not house.patient_ids:  # Only create patient if the house has no patients
         patient_id = random.randint(1000, 9999)  # Assign unique patient ID
         condition = "Unknown Condition"  # Default condition
-        name = f"Patient {patient_id}"  # Default name
+        name = f"{patient_id}"  # Remove "Patient" prefix from name
         patient = Patient(patient_id, name, condition)
         patients.append(patient)  # Add the patient to the global list
         house.add_patient(patient.id)
-        log_event(f"Patient {patient.name} (ID: {patient.id}) with condition {patient.condition} is at House {house.id}", event_type='patient')
+        log_event(f"Patient {patient.id} with condition {patient.condition} is at House {house.id}", event_type='patient')
         socketio.emit('update_state', get_state())
 
 def generate_patients_automatically():
