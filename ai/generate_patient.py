@@ -14,11 +14,15 @@ def generate_fhir_resources():
     prompt = f"""Using seed {seed} for randomization: Generate two valid FHIR R4 resources:
     1. A Patient resource with:
        - random ID 
-       - random First and Last name (Make a more obscure name, dont use typical names like John or Jane and no Smith as lastname that are likely to duplicate)
+       - random First and Last name (IMPORTANT: 
+         * Make it truly random and unique
+         * DO NOT use common names like John, Jane, Smith, etc.
+         * First name should be uncommon but real
+         * Last name should be uncommon but real
        - random street 
        - city in Brisbane Australia 
        - random contacts
-       - random dob (not just 1990-01-01)
+       - random dob of YYYY-MM-DD format (not just 1990-01-01)
     2. A Condition resource that:
        - References the patient
        - onsetDateTime is {current_time}
