@@ -15,7 +15,7 @@ See [fhir_process.md](fhir_process.md) for the FHIR resources and exchanges.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate 
-pip install flask flask-socketio
+pip install -r requirements.txt
 ```
 
 # Run
