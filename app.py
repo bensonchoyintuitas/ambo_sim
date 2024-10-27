@@ -5,6 +5,8 @@ import time
 from threading import Thread, Lock
 import math
 from datetime import datetime
+import json
+from ai.generate_patient import generate_fhir_resources  # Add this import at the top
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -15,11 +17,15 @@ WAITING_TIME = 1  # seconds
 TREATING_TIME = 30  # seconds
 
 class Patient:
-    def __init__(self, id, name, condition):
+    def __init__(self, id, name, condition, condition_severity=None, dob=None, condition_note=None, fhir_resources=None):
         self.id = id
         self.name = name
         self.condition = condition
-        self.wait_time = 0  # Initialize wait time
+        self.condition_severity = condition_severity
+        self.dob = dob
+        self.condition_note = condition_note
+        self.wait_time = 0
+        self.fhir_resources = fhir_resources or {}
 
 class Ambulance:
     def __init__(self, id, x, y):
@@ -126,16 +132,163 @@ def log_event(message, event_type='general'):
 patients = []  # Global list to store all Patient objects
 
 def generate_random_patient():
-    """Generate a patient at a random house."""
+    """Generate a patient at a random house with FHIR resources."""
     random_house = random.choice(houses)
-    patient_id = random.randint(1000, 9999)  # Assign unique patient ID
-    condition = "Unknown Condition"  # Default condition
-    name = f"{patient_id}"  # Remove "Patient" prefix from name
-    patient = Patient(patient_id, name, condition)
-    patients.append(patient)  # Add the patient to the global list
-    random_house.add_patient(patient.id)
-    log_event(f"Patient {patient.id} with condition {patient.condition} is at House {random_house.id}", event_type='patient')
-    socketio.emit('update_state', get_state())
+    
+    try:
+        # Generate FHIR resources
+        print("Generating FHIR resources...")
+        fhir_resources = generate_fhir_resources()
+        print(f"FHIR resources received: {json.dumps(fhir_resources, indent=2)}")
+        
+        patient_resource = fhir_resources['entry'][0]['resource']
+        condition_resource = fhir_resources['entry'][1]['resource']
+        
+        # Get patient ID
+        print("Getting patient ID...")
+        patient_id = patient_resource.get('id', '')
+        if patient_id:
+            patient_id = patient_id.replace('Patient/', '')
+        else:
+            patient_id = f"pat-{random.randint(1000, 9999)}"
+        print(f"Patient ID: {patient_id}")
+        
+        # Get name - with better error handling
+        print("Getting patient name...")
+        name_parts = patient_resource.get('name', {})
+        if isinstance(name_parts, list):
+            name_parts = name_parts[0] if name_parts else {}
+        
+        given_name = ''
+        if isinstance(name_parts.get('given'), list):
+            given_name = name_parts['given'][0] if name_parts.get('given') else ''
+        else:
+            given_name = name_parts.get('given', '')
+            
+        family_name = name_parts.get('family', '')
+        if isinstance(family_name, list):
+            family_name = family_name[0] if family_name else ''
+            
+        full_name = f"{given_name} {family_name}".strip()
+        if not full_name:
+            full_name = "Unknown Patient"
+        print(f"Full name: {full_name}")
+        
+        # Get DOB
+        dob = patient_resource.get('dob')
+        
+        # Get condition details
+        condition = None
+        condition_severity = None
+        condition_note = None
+        
+        # First try conditions array
+        if 'conditions' in condition_resource:
+            conditions = condition_resource['conditions']
+            if isinstance(conditions, list) and conditions:
+                first_condition = conditions[0]
+                if isinstance(first_condition, dict):
+                    # Get condition name
+                    condition = (
+                        first_condition.get('display') or 
+                        first_condition.get('description') or
+                        first_condition.get('code', {}).get('display') or
+                        first_condition.get('code', {}).get('code')
+                    )
+                    # Get severity if it exists
+                    if 'severity' in first_condition:
+                        severity = first_condition['severity']
+                        if isinstance(severity, dict):
+                            condition_severity = severity.get('display') or severity.get('code')
+                    # Get note if it exists
+                    condition_note = first_condition.get('note')
+        
+        # Then try single code
+        elif 'code' in condition_resource:
+            code = condition_resource['code']
+            if isinstance(code, list) and code:
+                code = code[0]
+            if isinstance(code, dict):
+                condition = (
+                    code.get('display') or 
+                    code.get('description') or
+                    code.get('code')
+                )
+            
+            # Get severity from main condition resource
+            if 'severity' in condition_resource:
+                severity = condition_resource['severity']
+                if isinstance(severity, dict):
+                    condition_severity = severity.get('display') or severity.get('code')
+            
+            # Get note from main resource
+            if 'notes' in condition_resource:
+                if isinstance(condition_resource['notes'], dict):
+                    condition_note = condition_resource['notes'].get('value')
+                elif isinstance(condition_resource['notes'], str):
+                    condition_note = condition_resource['notes']
+        
+        if not condition:
+            condition = "Emergency Condition"
+        
+        # Create patient object with new properties
+        patient = Patient(
+            id=patient_id,
+            name=full_name,
+            condition=condition,
+            condition_severity=condition_severity,
+            dob=dob,
+            condition_note=condition_note,
+            fhir_resources=fhir_resources
+        )
+        
+        patients.append(patient)
+        random_house.add_patient(patient.id)
+        
+        # Enhanced log message with new properties
+        log_message = [f"New patient - ID: {patient_id}, Name: {full_name}"]
+        log_message.append(f"Condition: {condition}")
+        if condition_severity:
+            log_message.append(f"Severity: {condition_severity}")
+        if dob:
+            log_message.append(f"DOB: {dob}")
+        if condition_note:
+            note_preview = condition_note[:100] + "..." if len(condition_note) > 100 else condition_note
+            log_message.append(f"Note: {note_preview}")
+        
+        log_event(" | ".join(log_message), event_type='patient')
+        socketio.emit('update_state', get_state())
+        return patient
+        
+    except Exception as e:
+        import traceback
+        print(f"Detailed error in generate_random_patient: {str(e)}")
+        print("Traceback:")
+        print(traceback.format_exc())
+        
+        # Fallback generation
+        patient_id = f"pat-{random.randint(1000, 9999)}"
+        full_name = "Unknown Patient"
+        condition = "Emergency Condition"
+        
+        patient = Patient(
+            id=patient_id,
+            name=full_name,
+            condition=condition,
+            fhir_resources={}
+        )
+        patients.append(patient)
+        random_house.add_patient(patient.id)
+        
+        log_message = (
+            f"New patient (fallback) - "
+            f"ID: {patient_id}, "
+            f"Name: {full_name}, "
+            f"Condition: {condition}"
+        )
+        log_event(log_message, event_type='patient')
+        socketio.emit('update_state', get_state())
+        return patient
 
 def move_ambulances():
     """Move ambulances to pick up patients and take them to the nearest hospital."""

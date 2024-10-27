@@ -34,11 +34,12 @@ python3 app.py
 - [x] Assign nearest available ambulance
 
 # Stage 2
-- [ ] Separate event logs by class
+- [x] Separate event logs by class
 - [ ] Reflect more accurate patient flow (see [fhir_process.md](fhir_process.md))
 - [ ] Have patient-centric view of flow events (filterable)
 - [ ] Ambulances cannot leave if waiting
-- [ ] Patients have associated FHIR resources 
+- [x] Patients have associated FHIR resources 
+- [ ] Find a better LLM for generating FHIR resources
 
 # Stage 3
 - [ ] Use icons 
