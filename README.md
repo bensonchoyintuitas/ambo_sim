@@ -21,6 +21,7 @@ pip install -r requirements.txt
 # Run
 
 ```bash
+source .venv/bin/activate 
 python3 app.py
 ```
 
@@ -32,17 +33,21 @@ python3 app.py
 - [x] Display the patient id in an array in either house, ambo or hospital
 - [x] Add wait time
 - [x] Assign nearest available ambulance
-
-# Stage 2
 - [x] Separate event logs by class
+
+# Stage 2 Patients have associated FHIR resources 
+- [ ] Switch approach and use Synthea as a seed for each patient
+- [-] Find a better LLM for generating FHIR resources
+
+
+# Stage 3
+- [ ] Train a custom LLM for generating FHIR resources correctly to a defined template
 - [ ] Reflect more accurate patient flow (see [fhir_process.md](fhir_process.md))
 - [ ] Have patient-centric view of flow events (filterable)
 - [ ] Ambulances cannot leave if waiting
-- [x] Patients have associated FHIR resources 
-- [ ] Find a better LLM for generating FHIR resources
 - [ ] Make patient ID more unique and consistent
 
-# Stage 3
+# Stage 4
 - [ ] Use icons 
 - [ ] Agent-driven independent ambulances
 - [ ] Configurable number of ambulances, hospitals and houses
