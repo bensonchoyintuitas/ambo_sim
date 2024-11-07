@@ -36,7 +36,7 @@ python3 app.py
 - [x] Separate event logs by class
 
 # Stage 2 Patients have associated FHIR resources 
-- [ ] Switch approach and use Synthea as a seed for each patient
+- [-] Switch approach and use Synthea as a seed for each patient
 - [-] Find a better LLM for generating FHIR resources
 
 
