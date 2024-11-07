@@ -86,27 +86,34 @@ function drawState(state) {
     });
 }
 
-// Update the event log in the text box
-function updateLog(log) {
-    const logContainer = document.getElementById('eventLog');
-    logContainer.innerHTML = '';
-    log.forEach(event => {
+// Add these functions to handle specific log updates
+function updateSpecificLog(logData, containerId) {
+    const logContainer = document.getElementById(containerId);
+    logContainer.innerHTML = '<h3>' + containerId.split('-')[0].charAt(0).toUpperCase() + 
+                            containerId.split('-')[0].slice(1) + ' Events</h3>';
+    const ul = document.createElement('ul');
+    logData.forEach(event => {
         const li = document.createElement('li');
         li.textContent = event;
-        logContainer.appendChild(li);
+        ul.appendChild(li);
     });
+    logContainer.appendChild(ul);
 }
 
-// Handle socket events for state updates and log updates
-socket.on('update_state', function(state) {
-    console.log('State updated');  // Debugging output
-    drawState(state);
+// Update the socket event handlers
+socket.on('update_patient_log', function(log) {
+    updateSpecificLog(log, 'patient-events');
 });
 
-socket.on('update_log', function(log) {
-    console.log('Log updated');  // Debugging output
-    updateLog(log);
+socket.on('update_ambulance_log', function(log) {
+    updateSpecificLog(log, 'ambulance-events');
 });
+
+socket.on('update_hospital_log', function(log) {
+    updateSpecificLog(log, 'hospital-events');
+});
+
+// Remove or comment out the old updateLog function if it's not being used elsewhere
 
 document.getElementById('resetButton').addEventListener('click', () => {
     socket.emit('reset_simulation');

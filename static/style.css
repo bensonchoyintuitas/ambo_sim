@@ -1,7 +1,7 @@
 body {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;  /* Changed from center to flex-start */
     justify-content: space-between;
     height: 100vh;
     margin: 0;
@@ -12,9 +12,23 @@ body {
     overflow: hidden;
 }
 
+/* Add a container for the header area */
+.header-container {
+    display: flex;
+    flex-direction: column;  /* Stack elements vertically */
+    margin-left: 50px;      /* Left margin */
+    margin-top: 20px;       /* Top margin */
+    margin-bottom: 0;    /* Remove bottom margin */
+}
+
+h1 {
+    margin: 0;             /* Remove default margins */
+    margin-bottom: 10px;   /* Space between title and button */
+}
+
 canvas {
-    border: 1px solid #ffffff; /* Light border color */
-    margin-top: 20px;
+    border: 1px solid #333;  /* Match event box border color */
+    margin-top: 0;       /* Remove top margin */
 }
 
 #content {
@@ -64,15 +78,66 @@ canvas {
 }
 
 #resetButton {
-    margin-bottom: 20px;
-    padding: 10px 20px;
-    font-size: 16px;
-    background-color: #333333; /* Dark button background */
-    color: #ffffff; /* Light button text */
-    border: none;
+    padding: 5px 10px;
+    font-size: 12px;
+    background-color: #333333;
+    color: #ffffff;
+    border: 1px solid #666666;  /* Light grey border */
+    border-radius: 3px;         /* Slightly rounded corners */
     cursor: pointer;
+    transform: scale(0.7);
+    transform-origin: left;
+    margin-bottom: 0;
+    width: fit-content;         /* Make width fit content */
+    min-width: 60px;           /* Minimum width */
 }
 
 #resetButton:hover {
-    background-color: #444444; /* Slightly lighter on hover */
+    background-color: #444444;
+    border-color: #888888;     /* Lighter border on hover */
+}
+
+.event-logs {
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 450px;  /* Increased from 300px (300 * 1.7 = 510) */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.event-log {
+    background-color: #1e1e1e;
+    color: #fff;
+    border: 1px solid #333;
+    margin: 10px;
+    padding: 10px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 200px;
+}
+
+.event-log h3 {
+    margin-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #333;
+    font-size: 14px;  /* Slightly smaller heading */
+}
+
+.event-log ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.event-log li {
+    padding: 5px 0;
+    border-bottom: 1px solid #2a2a2a;
+    font-size: 12px;  /* Smaller font size for log entries */
+}
+
+.event-log li:last-child {
+    border-bottom: none;
 }
