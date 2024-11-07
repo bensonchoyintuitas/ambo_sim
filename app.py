@@ -14,7 +14,7 @@ app = Flask(__name__)
 socketio = SocketIO(app)
 
 # Configurable variables
-MAX_TREATING = 4
+MAX_TREATING = 2
 WAITING_TIME = 1  # seconds
 TREATING_TIME = 240  # seconds
 PATIENT_GENERATION_LOWER_BOUND = 0  # Lower bound for patient generation delay

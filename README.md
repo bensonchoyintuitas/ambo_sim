@@ -41,10 +41,11 @@ python3 app.py
 
 # Stage 2 Patients have associated FHIR resources 
 - [-] Switch approach and use Synthea as a seed for each patient
-- [-] Find a better LLM for generating FHIR resources based on the seed patient from synthea
+- [ ] If an ambulance is wiating with patient - they cannot leave
 
 
 # Stage 3
+- [-] Find a better LLM for generating FHIR resources such as condition based on the seed patient from synthea
 - [ ] Train a custom LLM for generating FHIR resources correctly to a defined template
 - [ ] Reflect more accurate patient flow (see [fhir_process.md](fhir_process.md))
 - [ ] Have patient-centric view of flow events (filterable)
