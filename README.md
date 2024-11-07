@@ -18,7 +18,11 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-# Run
+# Run the Synthea API
+https://github.com/bensonchoyintuitas/synthea_api
+
+
+# Run the ambo sim
 
 ```bash
 source .venv/bin/activate 
@@ -37,7 +41,7 @@ python3 app.py
 
 # Stage 2 Patients have associated FHIR resources 
 - [-] Switch approach and use Synthea as a seed for each patient
-- [-] Find a better LLM for generating FHIR resources
+- [-] Find a better LLM for generating FHIR resources based on the seed patient from synthea
 
 
 # Stage 3

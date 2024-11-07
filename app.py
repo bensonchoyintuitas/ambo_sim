@@ -6,7 +6,8 @@ from threading import Thread, Lock
 import math
 from datetime import datetime
 import json
-from ai.generate_patient import generate_fhir_resources  # Add this import at the top
+# from ai.generate_patient import generate_fhir_resources  # Add this import at the top
+from generate_synthea_patient import generate_fhir_resources  # Add new import
 import uuid
 
 app = Flask(__name__)
@@ -15,7 +16,9 @@ socketio = SocketIO(app)
 # Configurable variables
 MAX_TREATING = 4
 WAITING_TIME = 1  # seconds
-TREATING_TIME = 30  # seconds
+TREATING_TIME = 240  # seconds
+PATIENT_GENERATION_LOWER_BOUND = 0  # Lower bound for patient generation delay
+PATIENT_GENERATION_UPPER_BOUND = 1  # Upper bound for patient generation delay
 
 class Patient:
     def __init__(self, id, name, condition, condition_severity=None, dob=None, condition_note=None, fhir_resources=None):
@@ -137,109 +140,45 @@ def generate_random_patient():
     random_house = random.choice(houses)
     
     try:
-        # Generate GUID first
-        patient_guid = str(uuid.uuid4())
-        print(f"Generated GUID: {patient_guid}")
+        # Get FHIR resources from Synthea API
+        fhir_resources = generate_fhir_resources()
         
-        # Generate FHIR resources with GUID
-        fhir_resources = generate_fhir_resources(patient_guid)
+        # Get the patient resource directly
+        patient_resource = fhir_resources['patient']
         
-        patient_resource = fhir_resources['entry'][0]['resource']
-        condition_resource = fhir_resources['entry'][1]['resource']
-        
-        # Use the same GUID as patient ID
-        patient_id = patient_guid
+        # Extract patient ID from the resource
+        patient_id = patient_resource.get('id')
         print(f"Patient ID: {patient_id}")
         
-        # Get DOB from patient resource
-        dob = patient_resource.get('dob')
-        print(f"DOB: {dob}")  # Debug print
-        
-        # Get name
-        print("Getting patient name...")
-        name_parts = patient_resource.get('name', {})
-        if isinstance(name_parts, list):
-            name_parts = name_parts[0] if name_parts else {}
-        
-        given_name = ''
-        if isinstance(name_parts.get('given'), list):
-            given_name = name_parts['given'][0] if name_parts.get('given') else ''
-        else:
-            given_name = name_parts.get('given', '')
-            
-        family_name = name_parts.get('family', '')
-        if isinstance(family_name, list):
-            family_name = family_name[0] if family_name else ''
-            
+        # Get name from the resource
+        name_data = patient_resource.get('name', [{}])[0]
+        given_name = name_data.get('given', [''])[0] if name_data.get('given') else ''
+        family_name = name_data.get('family', '')
         full_name = f"{given_name} {family_name}".strip()
         if not full_name:
             full_name = "Unknown Patient"
         print(f"Full name: {full_name}")
         
-        # Get condition details with debug output
-        print("Getting condition details...")
-        condition = None
+        # Get birth date
+        dob = patient_resource.get('birthDate')
+        print(f"DOB: {dob}")
+        
+        # Get gender
+        gender = patient_resource.get('gender', 'unknown')
+        
+        # Get condition from the condition resource
+        condition_resource = fhir_resources['condition']
+        condition = condition_resource.get('code', {}).get('text', 'Emergency Condition')
         condition_severity = None
         condition_note = None
         
-        # First try conditions array
-        if 'conditions' in condition_resource:
-            conditions = condition_resource['conditions']
-            if isinstance(conditions, list) and conditions:
-                first_condition = conditions[0]
-                if isinstance(first_condition, dict):
-                    condition = (
-                        first_condition.get('display') or 
-                        first_condition.get('description') or
-                        first_condition.get('code', {}).get('display') or
-                        first_condition.get('code', {}).get('code')
-                    )
-                    if 'severity' in first_condition:
-                        severity = first_condition['severity']
-                        if isinstance(severity, dict):
-                            condition_severity = severity.get('display') or severity.get('code')
-                    condition_note = first_condition.get('note')
-        
-        # Then try single code
-        elif 'code' in condition_resource:
-            code = condition_resource['code']
-            if isinstance(code, list) and code:
-                code = code[0]
-            if isinstance(code, dict):
-                condition = (
-                    code.get('display') or 
-                    code.get('description') or
-                    code.get('code')
-                )
-            
-            if 'severity' in condition_resource:
-                severity = condition_resource['severity']
-                if isinstance(severity, dict):
-                    condition_severity = severity.get('display') or severity.get('code')
-            
-            if 'notes' in condition_resource:
-                if isinstance(condition_resource['notes'], dict):
-                    condition_note = condition_resource['notes'].get('value')
-                elif isinstance(condition_resource['notes'], str):
-                    condition_note = condition_resource['notes']
-        
-        if not condition:
-            condition = "Emergency Condition"
-            
-        # Print condition details
-        print(f"Condition: {condition}")
-        if condition_severity:
-            print(f"Severity: {condition_severity}")
-        if condition_note:
-            print(f"Note: {condition_note[:100]}..." if len(condition_note) > 100 else f"Note: {condition_note}")
-        
-        # Create patient object with new properties
+        # Create patient object with properties from FHIR resource
         patient = Patient(
             id=patient_id,
             name=full_name,
             condition=condition,
             condition_severity=condition_severity,
-            dob=dob,  # Now dob is defined
+            dob=dob,
             condition_note=condition_note,
             fhir_resources=fhir_resources
         )
@@ -247,20 +186,16 @@ def generate_random_patient():
         patients.append(patient)
         random_house.add_patient(patient.id)
         
-        # Enhanced log message with severity
+        # Enhanced log message with all available details
         log_parts = [
             f"New patient - ID: {patient_id}",
             f"Name: {full_name}",
+            f"Gender: {gender}",
             f"Condition: {condition}"
         ]
         
-        if condition_severity:
-            log_parts.append(f"Severity: {condition_severity}")
         if dob:
             log_parts.append(f"DOB: {dob}")
-        if condition_note:
-            note_preview = condition_note[:100] + "..." if len(condition_note) > 100 else condition_note
-            log_parts.append(f"Note: {note_preview}")
         
         log_event(" | ".join(log_parts), event_type='patient')
         socketio.emit('update_state', get_state())
@@ -473,7 +408,7 @@ def generate_patients_automatically():
     """Automatically generate patients at random intervals."""
     while True:
         generate_random_patient()
-        time.sleep(random.randint(1, 5))  # Random interval between 1 to 5 seconds
+        time.sleep(random.randint(PATIENT_GENERATION_LOWER_BOUND, PATIENT_GENERATION_UPPER_BOUND))
 
 # Start background threads for simulation
 Thread(target=generate_patients_automatically).start()
