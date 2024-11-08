@@ -333,7 +333,8 @@ def get_state():
                 'treating': [{'id': p.id, 'name': p.name, 'condition': p.condition, 'wait_time': p.wait_time} for p in h.treating],
                 'discharged': [{'id': p.id, 'name': p.name, 'condition': p.condition, 'wait_time': p.wait_time} for p in h.discharged]
             } for h in hospitals
-        ]
+        ],
+        'patients': [{'id': p.id, 'name': p.name} for p in patients]
     }
 
 def manage_hospital_queues():

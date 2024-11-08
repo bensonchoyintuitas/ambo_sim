@@ -14,6 +14,23 @@ const socket = io();
 // Track the state of houses (for clicking)
 let housesState = [];
 
+// At the top of the file, add some configuration constants
+const EMOJI_FONT_SIZE = '32px'; // 4x larger emojis
+const TEXT_FONT_SIZE = '14px';
+const HOUSE_SIZE = 10;  // Half of 20
+const HOSPITAL_SIZE = 20;  // Half of 40
+const AMBULANCE_SIZE = 10;  // Doubled from 5 to 10
+const EMOJI_OFFSET_X = 5;
+const EMOJI_OFFSET_Y = 15; // Adjusted for larger emoji
+const TEXT_OFFSET_X = -20;
+const TEXT_OFFSET_Y = 30;
+const AMBULANCE_PATIENT_OFFSET_Y = 40;  // New constant for patient text position below ambulance
+
+// Add these to your emoji constants
+const PATIENT_LOG_EMOJI = "👤";
+const AMBULANCE_LOG_EMOJI = "🚑";
+const HOSPITAL_LOG_EMOJI = "🏥";
+
 // Handle clicks on the canvas to create a patient at the clicked house if it's green
 canvas.addEventListener('click', function(event) {
     const rect = canvas.getBoundingClientRect();
@@ -37,67 +54,85 @@ canvas.addEventListener('click', function(event) {
 // Draw the state of the simulation (houses, ambulances, hospitals)
 function drawState(state) {
     context.clearRect(0, 0, canvas.width, canvas.height);
-    housesState = state.houses;  // Update housesState for click handling
+    housesState = state.houses;
 
     // Draw houses
     state.houses.forEach(function(house) {
+        // Draw the square
         if (house.has_patient) {
-            context.fillStyle = house.ambulance_on_the_way ? "yellow" : "red"; // Yellow if ambulance is on the way, red otherwise
+            context.fillStyle = house.ambulance_on_the_way ? "yellow" : "red";
         } else {
-            context.fillStyle = "green"; // Green if no patient
+            context.fillStyle = "green";
         }
-        context.fillRect(house.x, house.y, 20, 20);
-        context.fillStyle = "#ffffff"; // Set text color to white
-        context.fillText("H" + house.id, house.x + 5, house.y - 5);  // House ID
+        context.fillRect(house.x, house.y, HOUSE_SIZE, HOUSE_SIZE);
 
-        // Display patient IDs below the house
-        const patientList = house.patient_ids.join(", ");
-        context.fillText("Patients: " + patientList, house.x - 20, house.y + 30);
+        // Draw the emoji
+        context.fillStyle = "#ffffff";
+        context.font = EMOJI_FONT_SIZE + ' Arial';  // Larger font for emoji
+        context.fillText("🏠", house.x + EMOJI_OFFSET_X, house.y + EMOJI_OFFSET_Y);
+
+        // Draw the text
+        context.font = TEXT_FONT_SIZE + ' Arial';  // Regular font for text
+        if (house.patient_ids.length > 0) {
+            const patientInfo = house.patient_ids
+                .map(id => {
+                    const patient = state.patients?.find(p => p.id === id);
+                    return patient ? `👤${patient.name.split(' ')[0]}` : id;
+                })
+                .join(", ");
+            context.fillText(patientInfo, house.x + TEXT_OFFSET_X, house.y + TEXT_OFFSET_Y);
+        }
     });
 
-    // Draw hospitals and display patient lists
+    // Draw hospitals
     state.hospitals.forEach(function(hospital) {
+        // Draw the square
         context.fillStyle = "blue";
-        context.fillRect(hospital.x, hospital.y, 40, 40);
-        context.fillStyle = "#ffffff"; // Set text color to white
-        context.fillText("Hosp" + hospital.id, hospital.x + 5, hospital.y - 5);  // Hospital ID
+        context.fillRect(hospital.x, hospital.y, HOSPITAL_SIZE, HOSPITAL_SIZE);
 
-        // Display patient IDs in the waiting, treating, and discharged lists
-        const waitingList = hospital.waiting.map(patient => patient.id).join(", ");
-        const treatingList = hospital.treating.map(patient => patient.id).join(", ");
-        const dischargedList = hospital.discharged.map(patient => patient.id).join(", ");
+        // Draw the emoji
+        context.fillStyle = "#ffffff";
+        context.font = EMOJI_FONT_SIZE + ' Arial';  // Larger font for emoji
+        context.fillText("🏥", hospital.x + EMOJI_OFFSET_X, hospital.y + EMOJI_OFFSET_Y);
 
-        context.fillText("Waiting: " + waitingList, hospital.x - 20, hospital.y + 50);
-        context.fillText("Treating: " + treatingList, hospital.x - 20, hospital.y + 70);
-        context.fillText("Discharged: " + dischargedList, hospital.x - 20, hospital.y + 90);
+        // Draw the text
+        context.font = TEXT_FONT_SIZE + ' Arial';  // Regular font for text
+        if (hospital.waiting.length > 0) {
+            const waitingList = "⌛ " + hospital.waiting.map(p => p.name.split(' ')[0]).join(", ");
+            context.fillText(waitingList, hospital.x - 20, hospital.y + 50);
+        }
+        
+        if (hospital.treating.length > 0) {
+            const treatingList = "🏥 " + hospital.treating.map(p => p.name.split(' ')[0]).join(", ");
+            context.fillText(treatingList, hospital.x - 20, hospital.y + 70);
+        }
+        
+        if (hospital.discharged.length > 0) {
+            const dischargedList = "✅ " + hospital.discharged.map(p => p.name.split(' ')[0]).join(", ");
+            context.fillText(dischargedList, hospital.x - 20, hospital.y + 90);
+        }
     });
 
     // Draw ambulances
     state.ambulances.forEach(function(ambulance) {
+        // Draw the square
         context.fillStyle = ambulance.state;
-        context.fillRect(ambulance.x, ambulance.y, 10, 10);
-        context.fillStyle = "#ffffff"; // Set text color to white
-        context.fillText("Amb" + ambulance.id, ambulance.x + 5, ambulance.y - 5);  // Ambulance ID
+        context.fillRect(ambulance.x, ambulance.y, AMBULANCE_SIZE, AMBULANCE_SIZE);
 
-        // Display the patient ID carried by the ambulance
+        // Draw the emoji
+        context.fillStyle = "#ffffff";
+        context.font = EMOJI_FONT_SIZE + ' Arial';  // Larger font for emoji
+        context.fillText("🚑", ambulance.x + EMOJI_OFFSET_X, ambulance.y + EMOJI_OFFSET_Y);
+
+        // Draw the patient name further below the ambulance
+        context.font = TEXT_FONT_SIZE + ' Arial';
         if (ambulance.patient_id) {
-            context.fillText("Patient: " + ambulance.patient_id, ambulance.x - 10, ambulance.y + 20);
+            const patientName = state.patients?.find(p => p.id === ambulance.patient_id)?.name.split(' ')[0];
+            if (patientName) {
+                context.fillText(`👤${patientName}`, ambulance.x - 10, ambulance.y + AMBULANCE_PATIENT_OFFSET_Y);
+            }
         }
     });
-}
-
-// Add these functions to handle specific log updates
-function updateSpecificLog(logData, containerId) {
-    const logContainer = document.getElementById(containerId);
-    logContainer.innerHTML = '<h3>' + containerId.split('-')[0].charAt(0).toUpperCase() + 
-                            containerId.split('-')[0].slice(1) + ' Events</h3>';
-    const ul = document.createElement('ul');
-    logData.forEach(event => {
-        const li = document.createElement('li');
-        li.textContent = event;
-        ul.appendChild(li);
-    });
-    logContainer.appendChild(ul);
 }
 
 // Update the socket event handlers
@@ -113,13 +148,44 @@ socket.on('update_hospital_log', function(log) {
     updateSpecificLog(log, 'hospital-events');
 });
 
-// Remove or comment out the old updateLog function if it's not being used elsewhere
+// Update the updateSpecificLog function
+function updateSpecificLog(logData, containerId) {
+    const logContainer = document.getElementById(containerId);
+    
+    // Get the appropriate emoji based on the container ID
+    let emoji = "";
+    switch(containerId) {
+        case 'patient-events':
+            emoji = PATIENT_LOG_EMOJI;
+            break;
+        case 'ambulance-events':
+            emoji = AMBULANCE_LOG_EMOJI;
+            break;
+        case 'hospital-events':
+            emoji = HOSPITAL_LOG_EMOJI;
+            break;
+    }
+    
+    // Capitalize first letter of the title and add emoji
+    const title = containerId.split('-')[0].charAt(0).toUpperCase() + 
+                 containerId.split('-')[0].slice(1);
+    
+    logContainer.innerHTML = `<h3>${emoji} ${title} Events</h3>`;
+    const ul = document.createElement('ul');
+    logData.forEach(event => {
+        const li = document.createElement('li');
+        li.textContent = event;
+        ul.appendChild(li);
+    });
+    logContainer.appendChild(ul);
+}
 
 document.getElementById('resetButton').addEventListener('click', () => {
     socket.emit('reset_simulation');
 });
 
 socket.on('update_state', (state) => {
+    context.font = TEXT_FONT_SIZE + ' Arial';  // Reset to default text size
     drawState(state);
 });
 

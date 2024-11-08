@@ -123,7 +123,14 @@ canvas {
     margin-top: 0;
     padding-bottom: 10px;
     border-bottom: 1px solid #333;
-    font-size: 14px;  /* Slightly smaller heading */
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;  /* Space between emoji and text */
+}
+
+.event-log h3 emoji {
+    font-size: 18px;  /* Slightly larger emoji in the title */
 }
 
 .event-log ul {
