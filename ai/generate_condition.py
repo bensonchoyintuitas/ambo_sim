@@ -2,8 +2,12 @@ import ollama
 from datetime import datetime, timezone
 import json
 import uuid
+import argparse
 
-def generate_condition(patient_id, llm_model='llama3.1:8b'):
+# python3 generate_condition.py --llm-model gemma:2b
+# python3 generate_condition.py --llm-model llama3.1:8b
+
+def generate_condition(patient_id, llm_model='gemma:2b'):
     """Generate a FHIR Condition resource for a given patient ID.
     
     Args:
@@ -69,7 +73,7 @@ def generate_condition(patient_id, llm_model='llama3.1:8b'):
 
     Requirements:
     - Use a real SNOMED CT code and matching display name for an emergency condition
-    - Use appropriate SNOMED CT severity codes (e.g., 24484000 |Severe|, 6736007 |Moderate|, 255604002 |Mild|)
+    - Use appropriate SNOMED CT severity codes (e.g., 24484000 =Severe, 6736007 =Moderate, 255604002 =Mild)
     - Make the condition text and clinical notes realistic for an emergency presentation
     - Return valid FHIR JSON only, no markdown or explanation
 
@@ -108,17 +112,33 @@ def generate_condition(patient_id, llm_model='llama3.1:8b'):
         return None
 
 if __name__ == '__main__':
-    # Test the function with a sample patient ID
-    test_patient_id = "test-patient-123"
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='Generate a FHIR Condition resource')
+    parser.add_argument('--patient-id', type=str, default='test-patient-123',
+                       help='Patient ID to generate condition for')
+    parser.add_argument('--llm-model', type=str, default='llama3:8b',
+                       help='Ollama model to use (default: llama3:8b)')
+    parser.add_argument('--compare', action='store_true',
+                       help='Compare outputs between different models')
     
-    # Test with default model
-    print("Testing with default model:")
-    condition = generate_condition(test_patient_id)
-    if condition:
-        print(json.dumps(condition, indent=2))
+    args = parser.parse_args()
     
-    # Test with specific model
-    print("\nTesting with specific model:")
-    condition = generate_condition(test_patient_id, llm_model='gemma:2b')
-    if condition:
-        print(json.dumps(condition, indent=2))
+    if args.compare:
+        # Test with multiple models
+        models = ['llama3:8b', 'gemma:2b', 'mistral:7b']
+        print(f"Comparing condition generation across models for patient {args.patient_id}:")
+        for model in models:
+            print(f"\n=== Using model: {model} ===")
+            condition = generate_condition(args.patient_id, llm_model=model)
+            if condition:
+                print(json.dumps(condition, indent=2))
+            else:
+                print(f"Failed to generate condition with {model}")
+    else:
+        # Test with specified model
+        print(f"Generating condition using {args.llm_model} for patient {args.patient_id}")
+        condition = generate_condition(args.patient_id, llm_model=args.llm_model)
+        if condition:
+            print(json.dumps(condition, indent=2))
+        else:
+            print("Failed to generate condition")

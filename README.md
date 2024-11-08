@@ -26,7 +26,8 @@ https://github.com/bensonchoyintuitas/synthea_api
 
 ```bash
 source .venv/bin/activate 
-python3 app.py
+python3 app.py --llm-model llama3.1:8b # better
+python3 app.py --llm-model gemma:2b # worse
 ```
 
 # Todo
@@ -40,13 +41,14 @@ python3 app.py
 - [x] Separate event logs by class
 
 # Stage 2 Patients have associated FHIR resources 
-- [-] Switch approach and use Synthea as a seed for each patient
-- [ ] If an ambulance is wiating with patient - they cannot leave
+- [x] Switch approach and use Synthea as a seed for each patient
+- [-] Find a better LLM for generating FHIR resources such as condition based on the seed patient from synthea
+- [ ] Train a custom LLM for generating FHIR resources correctly to a defined template
+- [ ] Speed things up (maybe pregen into CSVs and load from there)
 
 
 # Stage 3
-- [-] Find a better LLM for generating FHIR resources such as condition based on the seed patient from synthea
-- [ ] Train a custom LLM for generating FHIR resources correctly to a defined template
+- [ ] If an ambulance is wiating with patient - they cannot leave
 - [ ] Reflect more accurate patient flow (see [fhir_process.md](fhir_process.md))
 - [ ] Have patient-centric view of flow events (filterable)
 - [ ] Ambulances cannot leave if waiting
