@@ -92,10 +92,11 @@ The simulation combines realistic patient data from Synthea with LLM-enhanced me
 # Stage 2 Patients have associated FHIR resources 
 - [x] Switch approach and use Synthea as a seed for each patient
 - [x] Find a better LLM for generating FHIR resources such as condition based on the seed patient from synthea
-- [-] Click patient to read their data
+
 
 # Stage 3 Apply treatment as Encounter resources
-- [x] Generate encounter resources
+- [x] Generate encounter and procedure resources
+- [x] Generate discharge event (to update existing encounter)
 
 # Stage 4 Send data to kafka
 
