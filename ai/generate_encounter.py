@@ -4,7 +4,7 @@ import json
 import uuid
 import argparse
 
-def generate_encounter(patient_id, condition_id, practitioner_id, organization_id, llm_model='gemma:2b'):
+def generate_encounter(patient_id, condition_id, practitioner_id, organization_id, condition_description=None, llm_model='gemma:2b'):
     """Generate a FHIR Encounter resource for a given patient and condition.
     
     Args:
@@ -12,6 +12,7 @@ def generate_encounter(patient_id, condition_id, practitioner_id, organization_i
         condition_id (str): The ID of the related condition
         practitioner_id (str): The ID of the treating practitioner
         organization_id (str): The ID of the healthcare organization
+        condition_description (str, optional): Description of patient's condition to inform diagnosis and procedures
         llm_model (str, optional): The Ollama model to use. Defaults to 'gemma:2b'
     
     Returns:
@@ -21,7 +22,20 @@ def generate_encounter(patient_id, condition_id, practitioner_id, organization_i
     encounter_id = str(uuid.uuid4())
     procedure_id = str(uuid.uuid4())
 
+    condition_context = ""
+    if condition_description:
+        condition_context = f"""
+        Patient Condition Context:
+        {condition_description}
+        
+        Use this condition description to:
+        1. Generate appropriate SNOMED codes for the diagnosis
+        2. Select relevant procedures that would be performed for this condition
+        3. Ensure the encounter type and reason codes align with the described condition
+        """
+
     prompt = f"""Generate a valid FHIR R4 Encounter resource that exactly follows this structure:
+    {condition_context}
     {{
         "resourceType": "Encounter",
         "id": "{encounter_id}",
@@ -34,7 +48,7 @@ def generate_encounter(patient_id, condition_id, practitioner_id, organization_i
         "type": [{{
             "coding": [{{
                 "system": "http://snomed.info/sct",
-                "code": "<generate valid SNOMED CT code for emergency encounter>",
+                "code": "<generate valid SNOMED CT code for emergency encounter matching the condition>",
                 "display": "<matching SNOMED display name>"
             }}],
             "text": "<encounter type description>"
@@ -72,37 +86,37 @@ def generate_encounter(patient_id, condition_id, practitioner_id, organization_i
         "reasonCode": [{{
             "coding": [{{
                 "system": "http://snomed.info/sct",
-                "code": "<generate valid SNOMED CT code for reason>",
+                "code": "<generate valid SNOMED CT code matching the condition>",
                 "display": "<matching SNOMED display name>"
             }}],
-            "text": "<reason for visit description>"
+            "text": "<reason for visit description based on the condition>"
         }}],
         "diagnosis": [{{
             "condition": {{
                 "reference": "Condition/{condition_id}",
-                "display": "<generate condition display name>"
+                "display": "<generate condition display name matching the description>"
             }},
             "rank": 1
         }}],
         "procedure": [{{
             "reference": "Procedure/{procedure_id}",
-            "display": "<generate procedure name>",
+            "display": "<generate procedure name appropriate for the condition>",
             "performedDateTime": "{current_time}",
             "code": {{
                 "coding": [{{
                     "system": "http://snomed.info/sct",
-                    "code": "<generate valid SNOMED CT code for procedure>",
+                    "code": "<generate valid SNOMED CT code for procedure appropriate for the condition>",
                     "display": "<matching SNOMED display name>"
                 }}],
-                "text": "<procedure description>"
+                "text": "<procedure description explaining treatment for the condition>"
             }}
         }}]
     }}
 
     Requirements:
-    - Use real SNOMED CT codes and matching display names for emergency encounter types, reasons, and procedures
-    - Make the encounter type, reason, and procedure descriptions realistic for an emergency presentation
-    - Generate plausible names for the organization, practitioner, and procedure
+    - Use real SNOMED CT codes and matching display names that are appropriate for the described condition
+    - Make the encounter type, reason, and procedure descriptions realistic and relevant to the condition
+    - Generate plausible names for the organization and practitioner
     - Ensure all generated content is medically appropriate for an emergency setting
     - Return valid FHIR JSON only, no markdown or explanation
 
@@ -146,6 +160,8 @@ if __name__ == '__main__':
                        help='Practitioner ID for the encounter')
     parser.add_argument('--organization-id', type=str, default='test-org-123',
                        help='Organization ID for the service provider')
+    parser.add_argument('--condition-description', type=str,
+                       help='Description of patient condition to inform diagnosis and procedures')
     parser.add_argument('--llm-model', type=str, default='gemma:2b',
                        help='Ollama model to use (default: gemma:2b)')
     
@@ -157,6 +173,7 @@ if __name__ == '__main__':
         args.condition_id,
         args.practitioner_id,
         args.organization_id,
+        condition_description=args.condition_description,
         llm_model=args.llm_model
     )
     
