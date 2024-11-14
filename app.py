@@ -18,7 +18,7 @@ socketio = SocketIO(app)
 # Configurable variables
 MAX_TREATING = 2
 WAITING_TIME = 1  # seconds
-TREATING_TIME = 240  # seconds
+TREATING_TIME = 30  # seconds
 PATIENT_GENERATION_LOWER_BOUND = 0  # Lower bound for patient generation delay
 PATIENT_GENERATION_UPPER_BOUND = 1  # Upper bound for patient generation delay
 DEFAULT_LLM_MODEL = 'llama3.1:8b'  # Default LLM model to use
@@ -71,17 +71,25 @@ class Ambulance:
         self.target = None
         self.is_available = True
         self.state = 'green'  # green means available
-        self.patient = None  # Store the entire Patient object
+        self.patient = None
+        self.speed = 2  # Reduced speed for smoother movement
 
     def move_to(self, target_x, target_y):
-        if self.x < target_x:
-            self.x += 4  # Move twice as fast
-        elif self.x > target_x:
-            self.x -= 4  # Move twice as fast
-        if self.y < target_y:
-            self.y += 4  # Move twice as fast
-        elif self.y > target_y:
-            self.y -= 4  # Move twice as fast
+        # Calculate direction vector
+        dx = target_x - self.x
+        dy = target_y - self.y
+        
+        # Calculate distance to target
+        distance = math.sqrt(dx**2 + dy**2)
+        
+        if distance > 0:
+            # Normalize direction vector and multiply by speed
+            dx = (dx / distance) * self.speed
+            dy = (dy / distance) * self.speed
+            
+            # Update position
+            self.x += dx
+            self.y += dy
 
 class House:
     def __init__(self, id, x, y):
@@ -349,7 +357,7 @@ def move_ambulances():
                 # Check if ambulance has reached target (within small distance)
                 distance = calculate_distance(ambulance.x, ambulance.y, target_x, target_y)
                 
-                if distance < 5:  # If within 5 pixels of target
+                if distance < 2:  # Reduced threshold for smoother stops
                     if isinstance(ambulance.target, House) and ambulance.is_available:
                         # Handle pickup
                         if ambulance.target.patient_ids:
@@ -377,20 +385,24 @@ def move_ambulances():
                             patient = ambulance.patient
                             
                             hospital.add_patient_to_waiting(patient)
+                            
+                            # Log to both ambulance and hospital logs
                             log_event(f"Ambulance {ambulance.id} dropped off {patient.name} at Hospital {hospital.id}", 
                                     event_type='ambulance')
+                            log_event(f"{patient.name} has arrived and is waiting at Hospital {hospital.id}", 
+                                    event_type='hospital')
                             
                             ambulance.patient = None
                             ambulance.is_available = True
                             ambulance.state = 'green'
-                            ambulance.target = None  # Clear target after dropoff
+                            ambulance.target = None
                             
                             # Reset ambulance position to hospital
                             ambulance.x = hospital.x
                             ambulance.y = hospital.y
 
         socketio.emit('update_state', get_state())
-        time.sleep(0.1)
+        time.sleep(0.016)  # Approximately 60 FPS for smoother animation
 
 def assign_ambulance():
     """Assign available ambulances to houses with patients."""
