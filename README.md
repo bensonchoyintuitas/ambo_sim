@@ -29,6 +29,7 @@ https://github.com/bensonchoyintuitas/synthea_api
 source .venv/bin/activate 
 python3 app.py --llm-model llama3.1:8b # better
 python3 app.py --llm-model gemma:2b # worse
+python3 app.py --llm-model llama2:7b 
 ```
 
 

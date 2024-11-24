@@ -6,14 +6,20 @@ from threading import Thread, Lock
 import math
 from datetime import datetime, timezone
 import json
-# from ai.generate_patient import generate_fhir_resources  # Add this import at the top
-from generate_synthea_patient import generate_fhir_resources  # Add new import
+from generate_synthea_patient import generate_fhir_resources
 import uuid
 from ai.generate_encounter import generate_encounter
 from ai.generate_encounter_discharge import generate_discharge
+import logging
+from ai.generate_condition import generate_condition
+from concurrent.futures import ThreadPoolExecutor
+import functools
 
 app = Flask(__name__)
 socketio = SocketIO(app)
+
+# Add thread pool for parallel patient generation
+patient_generator_pool = ThreadPoolExecutor(max_workers=8)  # Adjust workers based on your Ollama capacity
 
 # Configurable variables
 MAX_TREATING = 2
@@ -22,6 +28,16 @@ TREATING_TIME = 30  # seconds
 PATIENT_GENERATION_LOWER_BOUND = 0  # Lower bound for patient generation delay
 PATIENT_GENERATION_UPPER_BOUND = 1  # Upper bound for patient generation delay
 DEFAULT_LLM_MODEL = 'llama3.1:8b'  # Default LLM model to use
+
+# Setup logging at the top of your file
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('simulation.log'),
+        logging.StreamHandler()  # This will print to console too
+    ]
+)
 
 class Condition:
     def __init__(self, id, clinical_status, verification_status, severity, category, 
@@ -181,166 +197,151 @@ def generate_random_patient(llm_model=None):
     random_house = random.choice(houses)
     
     try:
-        # Get FHIR resources from Synthea API
+        logging.info("Generating FHIR resources...")
         fhir_resources = generate_fhir_resources()
         
-        # Print the generated patient FHIR resource
-        if fhir_resources and 'patient' in fhir_resources:
-            print("\n=== Generated Patient FHIR Resource ===")
-            print(json.dumps(fhir_resources['patient'], indent=2))
-            print("=====================================\n")
-        
-        # Get the patient resource directly
+        if not fhir_resources:
+            logging.error("Failed to generate FHIR resources - falling back to basic patient")
+            return generate_fallback_patient(random_house)
+            
         patient_resource = fhir_resources.get('patient')
         if not patient_resource:
             raise ValueError("No patient resource generated")
             
         patient_id = patient_resource.get('id')
         
-        # Generate condition for the patient using the specified LLM model
-        from ai.generate_condition import generate_condition
-        condition_fhir = generate_condition(patient_id, llm_model=llm_model)
-        
-        if condition_fhir:
-            print("\n=== Generated Condition FHIR Resource ===")
-            print(json.dumps(condition_fhir, indent=2))
-            print("========================================\n")
-            
-            condition = Condition.from_fhir(condition_fhir)
-        else:
-            # Create a basic fallback condition if AI generation fails
-            current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            condition = Condition(
-                id=str(uuid.uuid4()),
-                clinical_status={
-                    "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
-                    "code": "active",
-                    "display": "Active"
-                },
-                verification_status={
-                    "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
-                    "code": "confirmed",
-                    "display": "Confirmed"
-                },
-                severity={
-                    "system": "http://snomed.info/sct",
-                    "code": "24484000",
-                    "display": "Severe"
-                },
-                category={
-                    "system": "http://terminology.hl7.org/CodeSystem/condition-category",
-                    "code": "encounter-diagnosis",
-                    "display": "Encounter Diagnosis"
-                },
-                code={
-                    "system": "http://snomed.info/sct",
-                    "code": "427623005",
-                    "display": "Ambulatory patient"
-                },
-                subject_reference=f"Patient/{patient_id}",
-                onset_datetime=current_time,
-                recorded_date=current_time,
-                note="Emergency presentation with undetermined specific condition"
-            )
-        
-        # Extract patient details
+        # Extract detailed patient information
         name_data = patient_resource.get('name', [{}])[0]
         given_name = name_data.get('given', [''])[0] if name_data.get('given') else ''
         family_name = name_data.get('family', '')
         full_name = f"{given_name} {family_name}".strip() or "Unknown Patient"
-        dob = patient_resource.get('birthDate')
         
-        # Create patient object with Condition object
-        patient = Patient(
-            id=patient_id,
-            name=full_name,
-            condition=condition,  # Now always has a condition object
-            dob=dob,
-            fhir_resources=fhir_resources
-        )
+        # Extract additional demographics
+        gender = patient_resource.get('gender', 'unknown')
+        birth_date = patient_resource.get('birthDate', 'unknown')
+        marital_status = patient_resource.get('maritalStatus', {}).get('text', 'unknown')
         
-        patients.append(patient)
-        random_house.add_patient(patient.id)
+        # Get contact details if available
+        telecom = patient_resource.get('telecom', [])
+        phone = next((t.get('value') for t in telecom if t.get('system') == 'phone'), 'unknown')
         
-        # Enhanced log message with detailed condition information
-        log_parts = [
-            f"New patient - ID: {patient_id}",
-            f"Name: {full_name}",
-            f"Condition: {condition.code.get('display', 'Unknown')} (Code: {condition.code.get('code', 'Unknown')})",
-            f"Severity: {condition.severity.get('display', 'Unknown')} (Code: {condition.severity.get('code', 'Unknown')})"
-        ]
+        # Get address if available
+        address = patient_resource.get('address', [{}])[0]
+        address_str = ', '.join(filter(None, [
+            address.get('line', [''])[0],
+            address.get('city', ''),
+            address.get('state', ''),
+            address.get('postalCode', '')
+        ])) or 'unknown'
+
+        # Generate condition with more detail
+        condition_fhir = generate_condition(patient_id, llm_model=llm_model)
         
-        if dob:
-            log_parts.append(f"DOB: {dob}")
-        
-        log_event(" | ".join(log_parts), event_type='patient')
-        socketio.emit('update_state', get_state())
-        return patient
+        if condition_fhir:
+            condition = Condition.from_fhir(condition_fhir)
+            
+            # Create detailed log message
+            log_parts = [
+                f"New Patient Generated:",
+                f"ID: {patient_id}",
+                f"Name: {full_name}",
+                f"Gender: {gender.capitalize()}",
+                f"DOB: {birth_date}",
+                f"Marital Status: {marital_status}",
+                f"Phone: {phone}",
+                f"Address: {address_str}",
+                f"Condition: {condition.code.get('display', 'Unknown')}",
+                f"Severity: {condition.severity.get('display', 'Unknown')}",
+                f"Clinical Status: {condition.clinical_status.get('display', 'Unknown')}",
+                f"Category: {condition.category.get('display', 'Unknown')}"
+            ]
+            
+            if condition.note:
+                log_parts.append(f"Notes: {condition.note}")
+                
+            log_event(" | ".join(log_parts), event_type='patient')
+            
+            # Create and store patient object
+            patient = Patient(
+                id=patient_id,
+                name=full_name,
+                condition=condition,
+                dob=birth_date,
+                fhir_resources=fhir_resources
+            )
+            
+            patients.append(patient)
+            random_house.add_patient(patient.id)
+            socketio.emit('update_state', get_state())
+            return patient
+            
+        else:
+            logging.error("Failed to generate condition - falling back to basic patient")
+            return generate_fallback_patient(random_house)
         
     except Exception as e:
-        import traceback
-        print(f"Detailed error in generate_random_patient: {str(e)}")
-        print("Traceback:")
-        print(traceback.format_exc())
-        
-        # Fallback generation with a basic condition
-        patient_id = f"pat-{random.randint(1000, 9999)}"
-        current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        
-        # Create a basic fallback condition
-        condition = Condition(
-            id=str(uuid.uuid4()),
-            clinical_status={
-                "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
-                "code": "active",
-                "display": "Active"
-            },
-            verification_status={
-                "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
-                "code": "confirmed",
-                "display": "Confirmed"
-            },
-            severity={
-                "system": "http://snomed.info/sct",
-                "code": "24484000",
-                "display": "Severe"
-            },
-            category={
-                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
-                "code": "encounter-diagnosis",
-                "display": "Encounter Diagnosis"
-            },
-            code={
-                "system": "http://snomed.info/sct",
-                "code": "427623005",
-                "display": "Ambulatory patient"
-            },
-            subject_reference=f"Patient/{patient_id}",
-            onset_datetime=current_time,
-            recorded_date=current_time,
-            note="Emergency presentation with undetermined specific condition"
-        )
-        
-        patient = Patient(
-            id=patient_id,
-            name="Unknown Patient",
-            condition=condition,  # Include the fallback condition
-            fhir_resources={}
-        )
-        
-        patients.append(patient)
-        random_house.add_patient(patient.id)
-        
-        log_message = (
-            f"New patient (fallback) - "
-            f"ID: {patient_id}, "
-            f"Name: Unknown Patient, "
-            f"Condition: {condition.code.get('display', 'Unknown')}, "
-            f"Severity: {condition.severity.get('display', 'Unknown')}"
-        )
-        log_event(log_message, event_type='patient')
-        socketio.emit('update_state', get_state())
-        return patient
+        logging.error(f"Error in generate_random_patient: {str(e)}")
+        return generate_fallback_patient(random_house)
+
+def generate_fallback_patient(house):
+    """Generate a basic patient when FHIR generation fails."""
+    patient_id = f"pat-{random.randint(1000, 9999)}"
+    current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    
+    # Create a basic fallback condition
+    condition = Condition(
+        id=str(uuid.uuid4()),
+        clinical_status={
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active",
+            "display": "Active"
+        },
+        verification_status={
+            "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+            "code": "confirmed",
+            "display": "Confirmed"
+        },
+        severity={
+            "system": "http://snomed.info/sct",
+            "code": "24484000",
+            "display": "Severe"
+        },
+        category={
+            "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+            "code": "encounter-diagnosis",
+            "display": "Encounter Diagnosis"
+        },
+        code={
+            "system": "http://snomed.info/sct",
+            "code": "427623005",
+            "display": "Ambulatory patient"
+        },
+        subject_reference=f"Patient/{patient_id}",
+        onset_datetime=current_time,
+        recorded_date=current_time,
+        note="Emergency presentation (fallback patient)"
+    )
+    
+    patient = Patient(
+        id=patient_id,
+        name=f"Patient-{patient_id[-4:]}",
+        condition=condition,
+        fhir_resources={}
+    )
+    
+    patients.append(patient)
+    house.add_patient(patient.id)
+    
+    log_message = (
+        f"New fallback patient generated - "
+        f"ID: {patient_id}, "
+        f"Name: {patient.name}, "
+        f"Condition: {condition.code['display']}, "
+        f"Severity: {condition.severity['display']}"
+    )
+    log_event(log_message, event_type='patient')
+    socketio.emit('update_state', get_state())
+    return patient
 
 def move_ambulances():
     """Update ambulance positions and handle pickups/dropoffs."""
@@ -521,14 +522,24 @@ def manage_hospital_queues():
                             
                             if encounter:
                                 moved_patient.encounters.append(encounter)
-                                encounter_details = (
-                                    f"New Encounter for {moved_patient.name} at Hospital {hospital.id} | "
-                                    f"Condition: {condition_display} | "
-                                    f"Type: {encounter['type'][0]['coding'][0]['display']} | "
-                                    f"Reason: {encounter['reasonCode'][0]['coding'][0]['display']} | "
+                                
+                                # Create detailed encounter log
+                                encounter_details = [
+                                    f"New Encounter for {moved_patient.name} at Hospital {hospital.id}",
+                                    f"Encounter Type: {encounter['type'][0]['coding'][0]['display']}",
+                                    f"Status: {encounter['status']}",
+                                    f"Priority: {encounter.get('priority', {}).get('coding', [{}])[0].get('display', 'Unknown')}",
+                                    f"Service Type: {encounter.get('serviceType', {}).get('coding', [{}])[0].get('display', 'Unknown')}",
+                                    f"Diagnosis: {encounter.get('diagnosis', [{}])[0].get('condition', {}).get('display', 'Unknown')}",
+                                    f"Reason: {encounter['reasonCode'][0]['coding'][0]['display']}",
                                     f"Procedure: {encounter['procedure'][0]['display']}"
-                                )
-                                log_event(encounter_details, event_type='hospital')
+                                ]
+                                
+                                # Add any additional notes if present
+                                if 'note' in encounter:
+                                    encounter_details.append(f"Notes: {encounter['note'][0]['text']}")
+                                    
+                                log_event(" | ".join(encounter_details), event_type='hospital')
                                 
                             log_event(f"{moved_patient.name} moved to treating at Hospital {hospital.id}", event_type='hospital')
                             
@@ -556,13 +567,24 @@ def manage_hospital_queues():
                                     
                                     discharged_patient.encounters.append(discharge)
                                     
-                                    discharge_details = (
-                                        f"{discharged_patient.name} discharged from Hospital {hospital.id} | "
-                                        f"Encounter {original_encounter['id']} | "
-                                        f"Duration: {start_time} to {end_time} | "
-                                        f"Disposition: {discharge['hospitalization']['dischargeDisposition']['coding'][0]['display']}"
-                                    )
-                                    log_event(discharge_details, event_type='hospital')
+                                    discharge_details = [
+                                        f"{discharged_patient.name} discharged from Hospital {hospital.id}",
+                                        f"Encounter ID: {original_encounter['id']}",
+                                        f"Duration: {start_time} to {end_time}",
+                                        f"Disposition: {discharge['hospitalization']['dischargeDisposition']['coding'][0]['display']}",
+                                        f"Discharge Status: {discharge.get('status', 'unknown')}",
+                                        f"Length of Stay: {(datetime.fromisoformat(end_time.replace('Z', '+00:00')) - datetime.fromisoformat(start_time.replace('Z', '+00:00'))).total_seconds() / 3600:.1f} hours"
+                                    ]
+                                    
+                                    # Add discharge diagnosis if present
+                                    if 'diagnosis' in discharge:
+                                        discharge_details.append(f"Discharge Diagnosis: {discharge['diagnosis'][0]['condition']['display']}")
+                                        
+                                    # Add discharge instructions if present
+                                    if 'instruction' in discharge:
+                                        discharge_details.append(f"Instructions: {discharge['instruction'][0]['text']}")
+                                        
+                                    log_event(" | ".join(discharge_details), event_type='hospital')
                                     
                                 else:
                                     log_event(f"{discharged_patient.name} discharged from Hospital {hospital.id} (no prior encounter found)", event_type='hospital')
@@ -577,6 +599,34 @@ def manage_hospital_queues():
 def log_hospital_event(message):
     """Log events specific to hospital operations."""
     log_event(message, event_type='hospital')
+
+def reset_simulation():
+    """Reset the simulation to its initial state."""
+    global houses, hospitals, ambulances, event_log
+
+    # Reinitialize houses
+    houses = [House(i, 50, 50 + i * 60) for i in range(10)]
+
+    # Reinitialize hospitals
+    hospitals = [Hospital(i, 450, 50 + i * 200) for i in range(3)]
+
+    # Reinitialize ambulances
+    ambulances = []
+    for i in range(5):
+        hospital = hospitals[i % len(hospitals)]
+        ambulances.append(Ambulance(i, hospital.x, hospital.y))
+
+    # Clear event log
+    event_log = []
+
+    # Emit the updated state to all clients
+    socketio.emit('update_state', get_state())
+    socketio.emit('update_log', event_log)
+
+@socketio.on('reset_simulation')
+def handle_reset_simulation():
+    """Handle the reset simulation event from the client."""
+    reset_simulation()
 
 @app.route('/')
 def index():
@@ -594,7 +644,19 @@ def handle_create_patient(data=None):
     """Handle button click to create a patient."""
     llm_model = data.get('llm_model') if data else None
     print(f'Create Patient event received, using model: {llm_model or DEFAULT_LLM_MODEL}')
-    generate_random_patient(llm_model=llm_model)
+    
+    # Submit to thread pool instead of direct call
+    future = patient_generator_pool.submit(generate_random_patient_async, llm_model)
+    
+    def handle_generated_patient(future):
+        try:
+            patient = future.result()
+            if patient:
+                socketio.emit('update_state', get_state())
+        except Exception as e:
+            logging.error(f"Error handling generated patient: {str(e)}")
+    
+    future.add_done_callback(handle_generated_patient)
 
 @socketio.on('create_patient_at_house')
 def handle_create_patient_at_house(data):
@@ -651,25 +713,56 @@ def handle_create_patient_at_house(data):
         )
         socketio.emit('update_state', get_state())
 
+def generate_random_patient_async(llm_model=None):
+    """Async version of generate_random_patient for parallel processing."""
+    try:
+        logging.info(f"Starting async patient generation with model: {llm_model}")
+        patient = generate_random_patient(llm_model)
+        if patient:
+            socketio.emit('update_state', get_state())
+        return patient
+    except Exception as e:
+        logging.error(f"Error in async patient generation: {str(e)}")
+        return None
+
 def generate_patients_automatically(llm_model=None):
-    """Automatically generate patients at random intervals.
-    
-    Args:
-        llm_model (str, optional): The Ollama model to use. Defaults to DEFAULT_LLM_MODEL
-    """
+    """Automatically generate patients at random intervals using thread pool."""
     while True:
-        generate_random_patient(llm_model=llm_model)
-        time.sleep(random.randint(PATIENT_GENERATION_LOWER_BOUND, PATIENT_GENERATION_UPPER_BOUND))
+        try:
+            # Submit patient generation task to thread pool
+            future = patient_generator_pool.submit(generate_random_patient_async, llm_model)
+            
+            # Add callback to handle the generated patient
+            def handle_generated_patient(future):
+                try:
+                    patient = future.result()
+                    if patient:
+                        socketio.emit('update_state', get_state())
+                except Exception as e:
+                    logging.error(f"Error handling generated patient: {str(e)}")
+            
+            future.add_done_callback(handle_generated_patient)
+            
+            # Wait before generating next patient
+            time.sleep(random.randint(PATIENT_GENERATION_LOWER_BOUND, PATIENT_GENERATION_UPPER_BOUND))
+            
+        except Exception as e:
+            logging.error(f"Error in automatic patient generation: {str(e)}")
+            time.sleep(1)  # Wait before retrying
 
 # Modify the thread creation to accept command line arguments
 if __name__ == '__main__':
     import argparse
+    import atexit
     
     parser = argparse.ArgumentParser(description='Run the ambulance simulation')
     parser.add_argument('--llm-model', type=str, default=DEFAULT_LLM_MODEL,
                        help=f'LLM model to use (default: {DEFAULT_LLM_MODEL})')
     
     args = parser.parse_args()
+    
+    # Register shutdown handler for thread pool
+    atexit.register(lambda: patient_generator_pool.shutdown(wait=True))
     
     # Start background threads with specified model
     Thread(target=lambda: generate_patients_automatically(args.llm_model)).start()
@@ -679,33 +772,3 @@ if __name__ == '__main__':
     
     socketio.run(app)
 
-def reset_simulation():
-    """Reset the simulation to its initial state."""
-    global houses, hospitals, ambulances, event_log
-
-    # Reinitialize houses
-    houses = [House(i, 50, 50 + i * 60) for i in range(10)]
-
-    # Reinitialize hospitals
-    hospitals = [Hospital(i, 450, 50 + i * 200) for i in range(3)]
-
-    # Reinitialize ambulances
-    ambulances = []
-    for i in range(5):
-        hospital = hospitals[i % len(hospitals)]
-        ambulances.append(Ambulance(i, hospital.x, hospital.y))
-
-    # Clear event log
-    event_log = []
-
-    # Emit the updated state to all clients
-    socketio.emit('update_state', get_state())
-    socketio.emit('update_log', event_log)
-
-@socketio.on('reset_simulation')
-def handle_reset_simulation():
-    """Handle the reset simulation event from the client."""
-    reset_simulation()
-
-if __name__ == '__main__':
-    socketio.run(app)
