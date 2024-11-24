@@ -10,17 +10,29 @@ from generate_synthea_patient import generate_fhir_resources  # Update this impo
 import uuid
 import logging
 from ai.generate_condition import generate_condition
+from ai.generate_encounter import generate_encounter
+from ai.generate_encounter_discharge import generate_discharge
 from concurrent.futures import ThreadPoolExecutor
 import functools
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('simulation.log'),
+        logging.StreamHandler()
+    ]
+)
 
 app = Flask(__name__)
 socketio = SocketIO(app)
 
 # Configurable variables
-MAX_TREATING = 2
+GLOBAL_MAX_PATIENTS_PER_HOSPITAL = 4  # Maximum patients that can be treated simultaneously in each hospital
 WAITING_TIME = 2  # seconds
-TREATING_TIME = 10  # seconds
-DEFAULT_LLM_MODEL = 'llama2:7b'  # Default LLM model to use
+TREATING_TIME = 40  # seconds
+DEFAULT_LLM_MODEL = 'llama3.1:8b'  # Default LLM model to use
 PATIENT_GENERATION_LOWER_BOUND = 0  # Lower bound for patient generation delay
 PATIENT_GENERATION_UPPER_BOUND = 1  # Upper bound for patient generation delay
 
@@ -79,6 +91,7 @@ class Patient:
         self.condition_note = condition_note
         self.wait_time = 0
         self.fhir_resources = fhir_resources or {}
+        self.encounters = []  # Add list to store encounters
 
 class Ambulance:
     def __init__(self, id, x, y):
@@ -127,7 +140,7 @@ class Hospital:
         self.waiting.append(patient)  # Ensure patient object is added
 
     def move_patient_to_treating(self):
-        if self.waiting and len(self.treating) < MAX_TREATING:
+        if self.waiting and len(self.treating) < GLOBAL_MAX_PATIENTS_PER_HOSPITAL:
             patient = self.waiting.pop(0)  # Remove the first patient from the waiting queue
             self.treating.append(patient)
             patient.wait_time = 0  # Reset wait time
@@ -436,36 +449,142 @@ def get_state():
         ]
     }
 
+def validate_encounter_data(encounter):
+    """Validate the encounter data structure and ensure required fields exist."""
+    required_structure = {
+        'type': [{'coding': [{'display': 'Unknown'}]}],
+        'status': 'Unknown',
+        'priority': {'coding': [{'display': 'Unknown'}]},
+        'serviceType': {'coding': [{'display': 'Unknown'}]},
+        'diagnosis': [{'condition': {'display': 'Unknown'}}],
+        'reasonCode': [{'coding': [{'display': 'Unknown'}]}],
+        'procedure': [{'display': 'Unknown'}]
+    }
+    
+    # If encounter is None, return default structure
+    if not encounter:
+        logging.warning("Received null encounter data, using default structure")
+        return required_structure
+    
+    # Ensure all required fields exist with proper structure
+    validated = {}
+    try:
+        validated['type'] = encounter.get('type', required_structure['type'])
+        validated['status'] = encounter.get('status', required_structure['status'])
+        validated['priority'] = encounter.get('priority', required_structure['priority'])
+        validated['serviceType'] = encounter.get('serviceType', required_structure['serviceType'])
+        validated['diagnosis'] = encounter.get('diagnosis', required_structure['diagnosis'])
+        validated['reasonCode'] = encounter.get('reasonCode', required_structure['reasonCode'])
+        validated['procedure'] = encounter.get('procedure', required_structure['procedure'])
+        
+        # Copy any additional fields that might exist
+        for key in encounter:
+            if key not in validated:
+                validated[key] = encounter[key]
+                
+        return validated
+        
+    except Exception as e:
+        logging.error(f"Error validating encounter data: {str(e)}")
+        logging.debug(f"Raw encounter data: {encounter}")
+        return required_structure
+
 def manage_hospital_queues():
     """Manage the movement of patients between hospital queues."""
-    hospital_lock = Lock()
+    hospital_locks = {hospital.id: Lock() for hospital in hospitals}  # Individual locks per hospital
+    
+    def process_patient_encounter(hospital, patient):
+        """Process a single patient encounter with the LLM"""
+        try:
+            condition_description = (
+                f"Patient presents with {patient.condition.code.get('display', 'Unknown condition')}. "
+                f"Severity: {patient.condition.severity.get('display', 'Unknown severity')}. "
+                f"Clinical Status: {patient.condition.clinical_status.get('display', 'Unknown status')}. "
+                f"Notes: {patient.condition.note or 'No additional notes'}"
+            )
+
+            # Update the initial log message
+            log_event(f"Encounter commenced - information is being gathered for {patient.name}", event_type='hospital')
+            
+            encounter = generate_encounter(
+                patient_id=patient.id,
+                condition_id=patient.condition.id,
+                practitioner_id=f"pract-{str(uuid.uuid4())[:8]}", 
+                organization_id=f"org-{hospital.id}",
+                condition_description=condition_description,
+                llm_model=DEFAULT_LLM_MODEL
+            )
+            
+            encounter = validate_encounter_data(encounter)
+            patient.encounters.append(encounter)
+            
+            # Create a more informative summary from the encounter data
+            diagnosis = encounter['diagnosis'][0]['condition']['display']
+            procedure = encounter['procedure'][0]['display']
+            encounter_type = encounter['type'][0]['coding'][0]['display']
+            
+            summary = (
+                f"Encounter documented for {patient.name}: "
+                f"Diagnosed with {diagnosis}, "
+                f"Procedure performed: {procedure}, "
+                f"Visit type: {encounter_type}"
+            )
+            log_event(summary, event_type='hospital')
+            
+        except Exception as e:
+            logging.error(f"Error processing encounter for {patient.name}: {str(e)}")
+            log_event(f"Error documenting encounter for {patient.name}", event_type='hospital')
 
     while True:
         for hospital in hospitals:
-            with hospital_lock:
-                # Update wait times for patients in the waiting queue
+            with hospital_locks[hospital.id]:
+                # Process waiting patients
                 if hospital.waiting:
-                    patient = hospital.waiting[0]
+                    for patient in hospital.waiting:
+                        patient.wait_time += 1
+                        
+                        if patient.wait_time >= WAITING_TIME and len(hospital.treating) < GLOBAL_MAX_PATIENTS_PER_HOSPITAL:
+                            moved_patient = hospital.move_patient_to_treating()
+                            if moved_patient:
+                                # Use ThreadPoolExecutor to process encounters concurrently
+                                patient_generator_pool.submit(process_patient_encounter, hospital, moved_patient)
+
+                # Process treating patients
+                for patient in list(hospital.treating):
                     patient.wait_time += 1
-
-                    # Move patient to treating if wait time exceeds WAITING_TIME and there's space
-                    if patient.wait_time >= WAITING_TIME and len(hospital.treating) < MAX_TREATING:
-                        moved_patient = hospital.move_patient_to_treating()
-                        if moved_patient:
-                            log_event(f"Patient {moved_patient.id} moved to treating at Hospital {hospital.id}", event_type='hospital')
-
-                # Update wait times for patients in the treating queue
-                for patient in hospital.treating:
-                    patient.wait_time += 1
-
-                    # Discharge patient if wait time exceeds TREATING_TIME
                     if patient.wait_time >= TREATING_TIME:
                         discharged_patient = hospital.discharge_patient()
                         if discharged_patient:
-                            log_event(f"Patient {discharged_patient.id} discharged from Hospital {hospital.id}", event_type='hospital')
+                            # Process discharge in thread pool as well
+                            patient_generator_pool.submit(
+                                generate_discharge_for_patient, 
+                                hospital, 
+                                discharged_patient
+                            )
 
         socketio.emit('update_state', get_state())
         time.sleep(1)
+
+# Add this helper function
+def generate_discharge_for_patient(hospital, patient):
+    """Process discharge for a single patient"""
+    try:
+        if patient.encounters:
+            original_encounter = patient.encounters[-1]
+            start_time = original_encounter['period']['start']
+            end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            discharge = generate_discharge(
+                encounter_id=original_encounter['id'],
+                start_time=start_time,
+                end_time=end_time
+            )
+            
+            patient.encounters.append(discharge)
+            # ... rest of discharge logging ...
+            
+    except Exception as e:
+        logging.error(f"Error generating discharge: {str(e)}")
 
 def log_hospital_event(message):
     """Log events specific to hospital operations."""
