@@ -148,9 +148,20 @@ class Hospital:
         return None
 
     def discharge_patient(self):
+        """Move patient from treating to discharged queue."""
         if self.treating:
-            patient = self.treating.pop(0)  # Remove the first patient from the treating queue
-            self.discharged.append(patient)
+            patient = self.treating.pop(0)  # Remove from treating queue
+            self.discharged.append(patient)  # Add to discharged queue
+            
+            # Add log event for patient moving to discharged list
+            discharge_details = (
+                f"Patient {patient.name} moved to discharged list | "
+                f"Hospital {self.id} | "
+                f"Condition: {patient.condition.code.get('display', 'Unknown')} | "
+                f"Treatment duration: {patient.wait_time} seconds"
+            )
+            log_event(discharge_details, event_type='hospital')
+            
             return patient
         return None
 
@@ -280,8 +291,10 @@ def generate_random_patient(llm_model=None):
             
         patient_id = patient_resource.get('id')
         
-        # Generate condition with LLM
+        # Track LLM request for condition generation
+        request_counter.increment_requests()
         condition_fhir = generate_condition(patient_id, llm_model=llm_model)
+        request_counter.increment_completed()
         
         if condition_fhir:
             condition = Condition.from_fhir(condition_fhir)
@@ -607,10 +620,18 @@ def generate_discharge_for_patient(hospital, patient):
             )
             
             patient.encounters.append(discharge)
-            # ... rest of discharge logging ...
+            
+            # Add discharge event logging
+            discharge_summary = (
+                f"Patient {patient.name} discharged from Hospital {hospital.id} | "
+                f"Condition: {patient.condition.code.get('display', 'Unknown')} | "
+                f"Total time in hospital: {patient.wait_time} seconds"
+            )
+            log_event(discharge_summary, event_type='hospital')
             
     except Exception as e:
         logging.error(f"Error generating discharge: {str(e)}")
+        log_event(f"Error processing discharge for {patient.name}", event_type='hospital')
 
 def log_hospital_event(message):
     """Log events specific to hospital operations."""
