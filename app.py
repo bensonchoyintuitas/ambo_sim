@@ -489,52 +489,78 @@ def validate_encounter_data(encounter):
         logging.debug(f"Raw encounter data: {encounter}")
         return required_structure
 
+class RequestCounter:
+    def __init__(self):
+        self.requests_made = 0
+        self.requests_completed = 0
+        self.lock = Lock()
+    
+    def increment_requests(self):
+        with self.lock:
+            self.requests_made += 1
+            self.emit_counts()
+    
+    def increment_completed(self):
+        with self.lock:
+            self.requests_completed += 1
+            self.emit_counts()
+    
+    def emit_counts(self):
+        socketio.emit('update_request_counts', {
+            'requests_made': self.requests_made,
+            'requests_completed': self.requests_completed
+        })
+
+request_counter = RequestCounter()
+
+# Modify process_patient_encounter to track requests
+def process_patient_encounter(hospital, patient):
+    """Process a single patient encounter with the LLM"""
+    try:
+        condition_description = (
+            f"Patient presents with {patient.condition.code.get('display', 'Unknown condition')}. "
+            f"Severity: {patient.condition.severity.get('display', 'Unknown severity')}. "
+            f"Clinical Status: {patient.condition.clinical_status.get('display', 'Unknown status')}. "
+            f"Notes: {patient.condition.note or 'No additional notes'}"
+        )
+
+        log_event(f"Encounter commenced - information is being gathered for {patient.name}", event_type='hospital')
+        request_counter.increment_requests()  # Increment requests
+        
+        encounter = generate_encounter(
+            patient_id=patient.id,
+            condition_id=patient.condition.id,
+            practitioner_id=f"pract-{str(uuid.uuid4())[:8]}", 
+            organization_id=f"org-{hospital.id}",
+            condition_description=condition_description,
+            llm_model=DEFAULT_LLM_MODEL
+        )
+        
+        encounter = validate_encounter_data(encounter)
+        patient.encounters.append(encounter)
+        request_counter.increment_completed()  # Increment completed
+        
+        # Create summary from encounter data
+        diagnosis = encounter['diagnosis'][0]['condition']['display']
+        procedure = encounter['procedure'][0]['display']
+        encounter_type = encounter['type'][0]['coding'][0]['display']
+        
+        summary = (
+            f"Encounter documented for {patient.name}: "
+            f"Diagnosed with {diagnosis}, "
+            f"Procedure performed: {procedure}, "
+            f"Visit type: {encounter_type}"
+        )
+        log_event(summary, event_type='hospital')
+            
+    except Exception as e:
+        logging.error(f"Error processing encounter for {patient.name}: {str(e)}")
+        log_event(f"Error documenting encounter for {patient.name}", event_type='hospital')
+
 def manage_hospital_queues():
     """Manage the movement of patients between hospital queues."""
     hospital_locks = {hospital.id: Lock() for hospital in hospitals}  # Individual locks per hospital
     
-    def process_patient_encounter(hospital, patient):
-        """Process a single patient encounter with the LLM"""
-        try:
-            condition_description = (
-                f"Patient presents with {patient.condition.code.get('display', 'Unknown condition')}. "
-                f"Severity: {patient.condition.severity.get('display', 'Unknown severity')}. "
-                f"Clinical Status: {patient.condition.clinical_status.get('display', 'Unknown status')}. "
-                f"Notes: {patient.condition.note or 'No additional notes'}"
-            )
-
-            # Update the initial log message
-            log_event(f"Encounter commenced - information is being gathered for {patient.name}", event_type='hospital')
-            
-            encounter = generate_encounter(
-                patient_id=patient.id,
-                condition_id=patient.condition.id,
-                practitioner_id=f"pract-{str(uuid.uuid4())[:8]}", 
-                organization_id=f"org-{hospital.id}",
-                condition_description=condition_description,
-                llm_model=DEFAULT_LLM_MODEL
-            )
-            
-            encounter = validate_encounter_data(encounter)
-            patient.encounters.append(encounter)
-            
-            # Create a more informative summary from the encounter data
-            diagnosis = encounter['diagnosis'][0]['condition']['display']
-            procedure = encounter['procedure'][0]['display']
-            encounter_type = encounter['type'][0]['coding'][0]['display']
-            
-            summary = (
-                f"Encounter documented for {patient.name}: "
-                f"Diagnosed with {diagnosis}, "
-                f"Procedure performed: {procedure}, "
-                f"Visit type: {encounter_type}"
-            )
-            log_event(summary, event_type='hospital')
-            
-        except Exception as e:
-            logging.error(f"Error processing encounter for {patient.name}: {str(e)}")
-            log_event(f"Error documenting encounter for {patient.name}", event_type='hospital')
-
     while True:
         for hospital in hospitals:
             with hospital_locks[hospital.id]:

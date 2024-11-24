@@ -31,5 +31,17 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="/static/script.js"></script>
+
+    <div class="request-counter" style="position: fixed; bottom: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; border-radius: 5px;">
+        <div>LLM Requests: <span id="requests-made">0</span></div>
+        <div>Completed: <span id="requests-completed">0</span></div>
+    </div>
+
+    <script>
+    socket.on('update_request_counts', function(data) {
+        document.getElementById('requests-made').textContent = data.requests_made;
+        document.getElementById('requests-completed').textContent = data.requests_completed;
+    });
+    </script>
 </body>
 </html>
