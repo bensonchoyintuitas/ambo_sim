@@ -138,6 +138,7 @@ class Hospital:
 
     def add_patient_to_waiting(self, patient):
         self.waiting.append(patient)  # Ensure patient object is added
+        log_event(f"{patient.name} has arrived at Hospital {self.id} and entered waiting queue", event_type='hospital')
 
     def move_patient_to_treating(self):
         if self.waiting and len(self.treating) < GLOBAL_MAX_PATIENTS_PER_HOSPITAL:
@@ -155,7 +156,7 @@ class Hospital:
             
             # Add log event for patient moving to discharged list
             discharge_details = (
-                f"Patient {patient.name} moved to discharged list | "
+                f"{patient.name} moved to discharged list | "
                 f"Hospital {self.id} | "
                 f"Condition: {patient.condition.code.get('display', 'Unknown')} | "
                 f"Treatment duration: {patient.wait_time} seconds"
@@ -303,12 +304,12 @@ def generate_random_patient(llm_model=None):
             name_data = patient_resource.get('name', [{}])[0]
             given_name = name_data.get('given', [''])[0] if name_data.get('given') else ''
             family_name = name_data.get('family', '')
-            full_name = f"{given_name} {family_name}".strip() or "Unknown Patient"
+            full_name = given_name or "Unknown Patient"  # Use just the given (first) name
             
             # Create patient object
             patient = Patient(
                 id=patient_id,
-                name=full_name,
+                name=full_name,  # This will now be just the first name
                 condition=condition,
                 dob=patient_resource.get('birthDate'),
                 fhir_resources=fhir_resources
@@ -361,9 +362,9 @@ def move_ambulances():
                         closest_ambulance.state = 'red'  # Heading to pick up a patient
                         house.ambulance_on_the_way = True
                         closest_ambulance.patient = patient
-                        log_event(f"Ambulance {closest_ambulance.id} is heading to House {house.id} to pick up Patient {patient.id}", event_type='ambulance')
+                        log_event(f"Ambulance {closest_ambulance.id} is heading to House {house.id} to pick up {patient.name}", event_type='ambulance')
                     else:
-                        log_event(f"No patient found with ID {house.patient_ids[0]} at House {house.id}", event_type='ambulance')
+                        log_event(f"No patient found at House {house.id}", event_type='ambulance')
 
         for ambulance in ambulances:
             if ambulance.target:
@@ -398,7 +399,7 @@ def move_ambulances():
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
                         ambulance.target = (nearest_hospital.x, nearest_hospital.y)
                         ambulance.state = 'yellow'  # Has patient, heading to hospital
-                        log_event(f"Ambulance {ambulance.id} picked up Patient {ambulance.patient.id} from House {patient_house.id} and is heading to Hospital {nearest_hospital.id}", event_type='ambulance')
+                        log_event(f"Ambulance {ambulance.id} picked up {ambulance.patient.name} from House {patient_house.id} and is heading to Hospital {nearest_hospital.id}", event_type='ambulance')
                     elif ambulance.x == ambulance.target[0] and ambulance.y == ambulance.target[1]:
                         # If ambulance reached the hospital, append patient object to that hospital's array
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
@@ -623,7 +624,7 @@ def generate_discharge_for_patient(hospital, patient):
             
             # Add discharge event logging
             discharge_summary = (
-                f"Patient {patient.name} discharged from Hospital {hospital.id} | "
+                f"{patient.name} discharged from Hospital {hospital.id} | "
                 f"Condition: {patient.condition.code.get('display', 'Unknown')} | "
                 f"Total time in hospital: {patient.wait_time} seconds"
             )
