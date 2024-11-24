@@ -137,7 +137,7 @@ class Hospital:
         self.discharged = []  # Queue for discharged patients
 
     def add_patient_to_waiting(self, patient):
-        self.waiting.append(patient)  # Ensure patient object is added
+        self.waiting.append(patient)
         log_event(f"{patient.name} has arrived at Hospital {self.id} and entered waiting queue", event_type='hospital')
 
     def move_patient_to_treating(self):
@@ -401,18 +401,15 @@ def move_ambulances():
                         ambulance.state = 'yellow'  # Has patient, heading to hospital
                         log_event(f"Ambulance {ambulance.id} picked up {ambulance.patient.name} from House {patient_house.id} and is heading to Hospital {nearest_hospital.id}", event_type='ambulance')
                     elif ambulance.x == ambulance.target[0] and ambulance.y == ambulance.target[1]:
-                        # If ambulance reached the hospital, append patient object to that hospital's array
+                        # If ambulance reached the hospital
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
-                        patient = next((p for p in patients if p.id == ambulance.patient.id), None)  # Find the patient object
+                        patient = next((p for p in patients if p.id == ambulance.patient.id), None)
                         if patient:
                             nearest_hospital.add_patient_to_waiting(patient)
-                            log_event(f"Patient {ambulance.patient.id} arrived at Hospital {nearest_hospital.id}", event_type='hospital')
-                            # Add new hospital event for patient arrival
-                            log_event(f"Patient {patient.id} has arrived at Hospital {nearest_hospital.id} and entered waiting queue", event_type='hospital')
                         ambulance.is_available = True
-                        ambulance.state = 'green'  # Free to pick up another patient
+                        ambulance.state = 'green'
                         ambulance.target = None
-                        ambulance.patient = None  # Clear the patient object
+                        ambulance.patient = None
 
         socketio.emit('update_state', get_state())
         time.sleep(0.05)  # Reduce the sleep time to make the simulation feel faster
