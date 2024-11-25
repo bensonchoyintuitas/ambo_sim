@@ -27,9 +27,13 @@ https://github.com/bensonchoyintuitas/synthea_api
 2. Run the ambo sim
 ```bash
 source .venv/bin/activate 
+python3 app.py --no-llm # no LLM
 python3 app.py --llm-model llama3.1:8b # better
 python3 app.py --llm-model gemma:2b # worse
 python3 app.py --llm-model llama2:7b 
+python3 app.py --llm-model llama3.2:1b 
+python3 app.py --llm-model gemma2:2b 
+python3 app.py --llm-model tinyllama 
 ```
 
 
@@ -48,6 +52,7 @@ python3 app.py --llm-model llama2:7b
      - Creates medically appropriate scenarios based on demographics/history
      - Ensures consistent formatting and required FHIR elements
    - Llama 3.1 follows the template more reliably and produces more accurate medical content than Gemma
+   - added no-llm option for speed
 
 3. **Simulation Components**
    - Houses: Generate patients at random intervals. Each house maintains an array of patient IDs currently at that location

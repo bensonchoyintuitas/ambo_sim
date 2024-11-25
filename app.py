@@ -14,6 +14,8 @@ from ai.generate_encounter import generate_encounter
 from ai.generate_encounter_discharge import generate_discharge
 from concurrent.futures import ThreadPoolExecutor
 import functools
+from argparse import ArgumentParser
+import atexit  # Add this import
 
 # Configure logging
 logging.basicConfig(
@@ -29,12 +31,13 @@ app = Flask(__name__)
 socketio = SocketIO(app)
 
 # Configurable variables
-GLOBAL_MAX_PATIENTS_PER_HOSPITAL = 4  # Maximum patients that can be treated simultaneously in each hospital
+GLOBAL_MAX_PATIENTS_PER_HOSPITAL = 2  # Maximum patients that can be treated simultaneously in each hospital
 WAITING_TIME = 2  # seconds
 TREATING_TIME = 40  # seconds
 DEFAULT_LLM_MODEL = 'llama3.1:8b'  # Default LLM model to use
-PATIENT_GENERATION_LOWER_BOUND = 0  # Lower bound for patient generation delay
-PATIENT_GENERATION_UPPER_BOUND = 1  # Upper bound for patient generation delay
+PATIENT_GENERATION_LOWER_BOUND = 5  # Lower bound for patient generation delay
+PATIENT_GENERATION_UPPER_BOUND = 10  # Upper bound for patient generation delay
+USE_LLM = True  # Default value, will be updated by command line args
 
 class Condition:
     def __init__(self, id, clinical_status, verification_status, severity, category, 
@@ -209,13 +212,54 @@ def log_event(message, event_type='general'):
 
 patients = []  # Global list to store all Patient objects
 
-def generate_fallback_patient(house):
-    """Generate a basic patient when FHIR generation fails."""
-    patient_id = f"pat-{random.randint(1000, 9999)}"
+def generate_fallback_condition():
+    """Generate a basic condition without using LLM."""
     current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     
-    # Create a basic fallback condition
-    condition = Condition(
+    # List of sample conditions
+    conditions = [
+        {
+            'code': '427623005',
+            'display': 'Chest Pain'
+        },
+        {
+            'code': '422400008',
+            'display': 'Vomiting'
+        },
+        {
+            'code': '39848009',
+            'display': 'Wheezing'
+        },
+        {
+            'code': '62315008',
+            'display': 'Dizziness'
+        },
+        {
+            'code': '25064002',
+            'display': 'Headache'
+        }
+    ]
+    
+    # List of sample severities
+    severities = [
+        {
+            'code': '24484000',
+            'display': 'Severe'
+        },
+        {
+            'code': '6736007',
+            'display': 'Moderate'
+        },
+        {
+            'code': '255604002',
+            'display': 'Mild'
+        }
+    ]
+    
+    chosen_condition = random.choice(conditions)
+    chosen_severity = random.choice(severities)
+    
+    return Condition(
         id=str(uuid.uuid4()),
         clinical_status={
             "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
@@ -227,117 +271,95 @@ def generate_fallback_patient(house):
             "code": "confirmed",
             "display": "Confirmed"
         },
-        severity={
-            "system": "http://snomed.info/sct",
-            "code": "24484000",
-            "display": "Severe"
-        },
+        severity=chosen_severity,
         category={
             "system": "http://terminology.hl7.org/CodeSystem/condition-category",
             "code": "encounter-diagnosis",
             "display": "Encounter Diagnosis"
         },
-        code={
-            "system": "http://snomed.info/sct",
-            "code": "427623005",
-            "display": "Ambulatory patient"
-        },
-        subject_reference=f"Patient/{patient_id}",
+        code=chosen_condition,
+        subject_reference=f"Patient/{str(uuid.uuid4())}",
         onset_datetime=current_time,
         recorded_date=current_time,
-        note="Emergency presentation (fallback patient)"
+        note=f"Patient presents with {chosen_condition['display']}"
     )
+
+def generate_fallback_encounter(patient_id, condition_id, hospital_id):
+    """Generate a basic encounter without using LLM."""
+    current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     
-    # Create patient with Condition object, not string
-    patient = Patient(
-        id=patient_id,
-        name=f"Patient-{patient_id[-4:]}",
-        condition=condition,  # Pass the Condition object here
-        fhir_resources={}
-    )
+    # Sample procedures based on condition
+    procedures = [
+        "Vital signs measurement",
+        "Physical examination",
+        "Blood test",
+        "X-ray examination",
+        "ECG monitoring"
+    ]
     
-    patients.append(patient)
-    house.add_patient(patient.id)
-    
-    log_message = (
-        f"New fallback patient generated - "
-        f"ID: {patient_id}, "
-        f"Name: {patient.name}, "
-        f"Condition: {condition.code['display']}, "
-        f"Severity: {condition.severity['display']}"
-    )
-    log_event(log_message, event_type='patient')
-    socketio.emit('update_state', get_state())
-    return patient
+    return {
+        'id': str(uuid.uuid4()),
+        'status': 'finished',
+        'type': [{'coding': [{'display': 'Emergency visit'}]}],
+        'priority': {'coding': [{'display': 'Urgent'}]},
+        'subject': {'reference': f'Patient/{patient_id}'},
+        'serviceType': {'coding': [{'display': 'Emergency Medicine'}]},
+        'period': {'start': current_time},
+        'diagnosis': [{'condition': {'display': 'Acute condition'}}],
+        'reasonCode': [{'coding': [{'display': 'Emergency presentation'}]}],
+        'procedure': [{'display': random.choice(procedures)}]
+    }
 
 # Add thread pool for parallel patient generation
 patient_generator_pool = ThreadPoolExecutor(max_workers=8)
 
 def generate_random_patient(llm_model=None):
     """Generate a patient at a random house with FHIR resources."""
-    llm_model = llm_model or DEFAULT_LLM_MODEL
     random_house = random.choice(houses)
     
     try:
-        logging.info("Generating FHIR resources...")
-        fhir_resources = generate_fhir_resources()
+        # Generate basic FHIR resources without Synthea if no LLM
+        patient_id = f"pat-{random.randint(1000, 9999)}"
         
-        if not fhir_resources:
-            logging.error("Failed to generate FHIR resources - falling back to basic patient")
-            return generate_fallback_patient(random_house)
-            
-        patient_resource = fhir_resources.get('patient')
-        if not patient_resource:
-            raise ValueError("No patient resource generated")
-            
-        patient_id = patient_resource.get('id')
-        
-        # Track LLM request for condition generation
-        request_counter.increment_requests()
-        condition_fhir = generate_condition(patient_id, llm_model=llm_model)
-        request_counter.increment_completed()
-        
-        if condition_fhir:
-            condition = Condition.from_fhir(condition_fhir)
-            
-            # Extract patient information
-            name_data = patient_resource.get('name', [{}])[0]
-            given_name = name_data.get('given', [''])[0] if name_data.get('given') else ''
-            family_name = name_data.get('family', '')
-            full_name = given_name or "Unknown Patient"  # Use just the given (first) name
-            
-            # Create patient object
-            patient = Patient(
-                id=patient_id,
-                name=full_name,  # This will now be just the first name
-                condition=condition,
-                dob=patient_resource.get('birthDate'),
-                fhir_resources=fhir_resources
-            )
-            
-            patients.append(patient)
-            random_house.add_patient(patient.id)
-            
-            # Create detailed log message
-            log_parts = [
-                f"New Patient Generated:",
-                f"ID: {patient_id}",
-                f"Name: {full_name}",
-                f"Condition: {condition.code.get('display', 'Unknown')}",
-                f"Severity: {condition.severity.get('display', 'Unknown')}",
-                f"Clinical Status: {condition.clinical_status.get('display', 'Unknown')}"
-            ]
-            
-            if condition.note:
-                log_parts.append(f"Notes: {condition.note}")
-                
-            log_event(" | ".join(log_parts), event_type='patient')
-            socketio.emit('update_state', get_state())
-            return patient
-            
+        if USE_LLM:
+            logging.info("Generating FHIR resources with LLM...")
+            fhir_resources = generate_fhir_resources()
+            request_counter.increment_requests()
+            condition_fhir = generate_condition(patient_id, llm_model=llm_model)
+            request_counter.increment_completed()
+            condition = Condition.from_fhir(condition_fhir) if condition_fhir else generate_fallback_condition()
         else:
-            logging.error("Failed to generate condition - falling back to basic patient")
-            return generate_fallback_patient(random_house)
+            logging.info("Generating basic FHIR resources without LLM...")
+            condition = generate_fallback_condition()
+            fhir_resources = {'patient': {'id': patient_id}}
+
+        # Create patient object
+        patient = Patient(
+            id=patient_id,
+            name=f"Patient-{patient_id[-4:]}",
+            condition=condition,
+            fhir_resources=fhir_resources
+        )
+        
+        patients.append(patient)
+        random_house.add_patient(patient.id)
+        
+        # Create detailed log message
+        log_parts = [
+            f"New Patient Generated:",
+            f"ID: {patient_id}",
+            f"Name: {patient.name}",
+            f"Condition: {condition.code.get('display', 'Unknown')}",
+            f"Severity: {condition.severity.get('display', 'Unknown')}",
+            f"Clinical Status: {condition.clinical_status.get('display', 'Unknown')}"
+        ]
+        
+        if condition.note:
+            log_parts.append(f"Notes: {condition.note}")
+            
+        log_event(" | ".join(log_parts), event_type='patient')
+        socketio.emit('update_state', get_state())
+        return patient
         
     except Exception as e:
         logging.error(f"Error in generate_random_patient: {str(e)}")
@@ -526,30 +548,30 @@ request_counter = RequestCounter()
 
 # Modify process_patient_encounter to track requests
 def process_patient_encounter(hospital, patient):
-    """Process a single patient encounter with the LLM"""
+    """Process a single patient encounter."""
     try:
-        condition_description = (
-            f"Patient presents with {patient.condition.code.get('display', 'Unknown condition')}. "
-            f"Severity: {patient.condition.severity.get('display', 'Unknown severity')}. "
-            f"Clinical Status: {patient.condition.clinical_status.get('display', 'Unknown status')}. "
-            f"Notes: {patient.condition.note or 'No additional notes'}"
-        )
-
-        log_event(f"Encounter commenced - information is being gathered for {patient.name}", event_type='hospital')
-        request_counter.increment_requests()  # Increment requests
-        
-        encounter = generate_encounter(
-            patient_id=patient.id,
-            condition_id=patient.condition.id,
-            practitioner_id=f"pract-{str(uuid.uuid4())[:8]}", 
-            organization_id=f"org-{hospital.id}",
-            condition_description=condition_description,
-            llm_model=DEFAULT_LLM_MODEL
-        )
-        
+        if USE_LLM:
+            # Existing LLM-based encounter generation
+            request_counter.increment_requests()
+            encounter = generate_encounter(
+                patient_id=patient.id,
+                condition_id=patient.condition.id,
+                practitioner_id=f"pract-{str(uuid.uuid4())[:8]}", 
+                organization_id=f"org-{hospital.id}",
+                condition_description=f"Patient presents with {patient.condition.code.get('display', 'Unknown condition')}",
+                llm_model=DEFAULT_LLM_MODEL
+            )
+            request_counter.increment_completed()
+        else:
+            # Generate basic encounter without LLM
+            encounter = generate_fallback_encounter(
+                patient_id=patient.id,
+                condition_id=patient.condition.id,
+                hospital_id=hospital.id
+            )
+            
         encounter = validate_encounter_data(encounter)
         patient.encounters.append(encounter)
-        request_counter.increment_completed()  # Increment completed
         
         # Create summary from encounter data
         diagnosis = encounter['diagnosis'][0]['condition']['display']
@@ -742,14 +764,19 @@ def handle_reset_simulation():
     reset_simulation()
 
 if __name__ == '__main__':
-    import argparse
-    import atexit
-    
-    parser = argparse.ArgumentParser(description='Run the ambulance simulation')
+    parser = ArgumentParser(description='Run the ambulance simulation')
     parser.add_argument('--llm-model', type=str, default=DEFAULT_LLM_MODEL,
                        help=f'LLM model to use (default: {DEFAULT_LLM_MODEL})')
+    parser.add_argument('--no-llm', action='store_true',
+                       help='Run simulation without LLM integration')
     
     args = parser.parse_args()
+    
+    # Update global USE_LLM flag
+    USE_LLM = not args.no_llm
+    
+    if USE_LLM:
+        logging.info(f"Running simulation with LLM")
     
     # Register shutdown handler for thread pool
     atexit.register(lambda: patient_generator_pool.shutdown(wait=True))
