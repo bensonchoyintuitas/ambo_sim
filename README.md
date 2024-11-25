@@ -29,10 +29,10 @@ https://github.com/bensonchoyintuitas/synthea_api
 source .venv/bin/activate 
 python3 app.py --no-llm # no LLM
 python3 app.py --llm-model llama3.1:8b # better
-python3 app.py --llm-model gemma:2b # worse
-python3 app.py --llm-model llama2:7b 
 python3 app.py --llm-model llama3.2:1b 
 python3 app.py --llm-model gemma2:2b 
+python3 app.py --llm-model gemma:2b # worse
+python3 app.py --llm-model llama2:7b 
 python3 app.py --llm-model tinyllama 
 ```
 
@@ -98,22 +98,21 @@ The simulation combines realistic patient data from Synthea with LLM-enhanced me
 # Stage 2 Patients have associated FHIR resources 
 - [x] Switch approach and use Synthea as a seed for each patient
 - [x] Find a better LLM for generating FHIR resources such as condition based on the seed patient from synthea
-
-
-# Stage 3 Apply treatment as Encounter resources
 - [x] Generate encounter and procedure resources
 - [x] Generate discharge event (to update existing encounter)
+- [ ] validate consistent fhir format for both LLM and NO LLM
+- [ ] If an ambulance is wiating with patient - they cannot leave
+- [ ] Vary treatment time by severity
 
-# Stage 4 Send data to kafka
+
+
+# Stage 3 Send data to kafka
 
 # Stage 4 Improved ambulance sim
 - [ ] Train a custom LLM for generating FHIR resources correctly to a defined template
 - [ ] Speed things up (maybe pregen into CSVs and load from there)
-- [ ] If an ambulance is wiating with patient - they cannot leave
-- [ ] Vary treatment by severity
 - [ ] Reflect more accurate patient flow (see [fhir_process.md](fhir_process.md))
 - [ ] Have patient-centric view of flow events (filterable)
-- [ ] Ambulances cannot leave if waiting
 - [ ] Make patient ID more unique and consistent
 
 # Stage 5 Advanced

@@ -318,37 +318,42 @@ def generate_random_patient(llm_model=None):
     random_house = random.choice(houses)
     
     try:
-        # Generate basic FHIR resources without Synthea if no LLM
-        patient_id = f"pat-{random.randint(1000, 9999)}"
+        # Generate FHIR resources first
+        fhir_resources = generate_fhir_resources()  # This should contain patient demographics
+        patient_id = fhir_resources['patient'].get('id', f"pat-{random.randint(1000, 9999)}")
+        patient_name = (
+            f"{fhir_resources['patient'].get('name', [{}])[0].get('given', ['Patient'])[0]} "
+            f"{fhir_resources['patient'].get('name', [{}])[0].get('family', str(patient_id[-4:]))}"
+        )
         
         if USE_LLM:
-            logging.info("Generating FHIR resources with LLM...")
-            fhir_resources = generate_fhir_resources()
+            logging.info("Generating condition with LLM...")
             request_counter.increment_requests()
             condition_fhir = generate_condition(patient_id, llm_model=llm_model)
             request_counter.increment_completed()
             condition = Condition.from_fhir(condition_fhir) if condition_fhir else generate_fallback_condition()
         else:
-            logging.info("Generating basic FHIR resources without LLM...")
+            logging.info("Generating basic condition without LLM...")
             condition = generate_fallback_condition()
-            fhir_resources = {'patient': {'id': patient_id}}
 
-        # Create patient object
+        # Create patient object with Synthea data
         patient = Patient(
             id=patient_id,
-            name=f"Patient-{patient_id[-4:]}",
+            name=patient_name,
             condition=condition,
+            dob=fhir_resources['patient'].get('birthDate'),
             fhir_resources=fhir_resources
         )
         
         patients.append(patient)
         random_house.add_patient(patient.id)
         
-        # Create detailed log message
+        # Update log message to include Synthea details
         log_parts = [
             f"New Patient Generated:",
             f"ID: {patient_id}",
-            f"Name: {patient.name}",
+            f"Name: {patient_name}",
+            f"DOB: {patient.dob}",
             f"Condition: {condition.code.get('display', 'Unknown')}",
             f"Severity: {condition.severity.get('display', 'Unknown')}",
             f"Clinical Status: {condition.clinical_status.get('display', 'Unknown')}"
