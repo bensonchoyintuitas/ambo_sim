@@ -22,14 +22,13 @@ pip install -r requirements.txt
 
 
 # Run
-1. Run the Synthea API
+1. Run the Synthea API (optional)
 https://github.com/bensonchoyintuitas/synthea_api
 2. Run the ambo sim
 ```bash
 source .venv/bin/activate 
 python3 app.py --no-llm # no LLM
-python3 app.py --no-synthea  # no Synthea
-python3 app.py --no-synthea --no-llm # no Synthea and no LLM
+
  # no Synthea
 python3 app.py --llm-model llama3.1:8b # better
 python3 app.py --llm-model llama3.2:1b 
@@ -102,7 +101,8 @@ The simulation combines realistic patient data from Synthea with LLM-enhanced me
 - [x] Find a better LLM for generating FHIR resources such as condition based on the seed patient from synthea
 - [x] Generate encounter and procedure resources
 - [x] Generate discharge event (to update existing encounter)
-- [ ] validate consistent fhir format for both LLM and NO LLM
+- [ ] validate consistent fhir format for both LLM and NO LLM, and with and without synthea
+- [ ] validate consistent fhir format using fallback when using clickable patient
 - [ ] If an ambulance is wiating with patient - they cannot leave
 - [ ] Vary treatment time by severity
 
