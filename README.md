@@ -28,12 +28,14 @@ https://github.com/bensonchoyintuitas/synthea_api
 ```bash
 source .venv/bin/activate 
 python3 app.py --no-llm # no LLM
+python3 app.py --no-synthea  # no Synthea
+python3 app.py --no-synthea --no-llm # no Synthea and no LLM
+ # no Synthea
 python3 app.py --llm-model llama3.1:8b # better
 python3 app.py --llm-model llama3.2:1b 
 python3 app.py --llm-model gemma2:2b 
 python3 app.py --llm-model gemma:2b # worse
 python3 app.py --llm-model llama2:7b 
-python3 app.py --llm-model tinyllama 
 ```
 
 
