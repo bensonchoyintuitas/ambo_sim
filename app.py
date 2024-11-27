@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 import functools
 from argparse import ArgumentParser
 import atexit  # Add this import
+from generate_synthea_patient import generate_fallback_patient  # Import the function
 
 # Configure logging
 logging.basicConfig(
@@ -686,47 +687,26 @@ def handle_create_patient_at_house(data):
     house = next((h for h in houses if h.id == house_id), None)
 
     if house and not house.patient_ids:
-        patient_id = f"pat-{random.randint(1000, 9999)}"
-        current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        
-        # Create a proper Condition object
-        condition = Condition(
-            id=str(uuid.uuid4()),
-            clinical_status={
-                "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
-                "code": "active",
-                "display": "Active"
-            },
-            verification_status={
-                "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
-                "code": "confirmed",
-                "display": "Confirmed"
-            },
-            severity={
-                "system": "http://snomed.info/sct",
-                "code": "24484000",
-                "display": "Severe"
-            },
-            category={
-                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
-                "code": "encounter-diagnosis",
-                "display": "Encounter Diagnosis"
-            },
-            code={
-                "system": "http://snomed.info/sct",
-                "code": "427623005",
-                "display": "Manual Entry Patient"
-            },
-            subject_reference=f"Patient/{patient_id}",
-            onset_datetime=current_time,
-            recorded_date=current_time,
-            note="Manually created patient"
+        # Generate a fallback condition for the patient
+        condition = generate_fallback_condition()  # Use the fallback condition generation
+
+        # Generate a fallback patient
+        fallback_patient = generate_fallback_patient()
+        patient_id = fallback_patient['patient']['id']  # Get ID from fallback patient
+        patient_name = fallback_patient['patient']['name'][0]['given'][0]  # Get name from fallback patient
+
+        patient = Patient(
+            id=patient_id,
+            name=patient_name,
+            condition=condition,
+            dob=None,  # You can set a default DOB if needed
+            condition_note=None,  # You can set a default note if needed
+            fhir_resources=None  # No FHIR resources for fallback
         )
-        
-        patient = Patient(patient_id, f"Patient-{patient_id[-4:]}", condition)
-        patients.append(patient)
-        house.add_patient(patient.id)
-        log_event(f"Patient {patient.id} created at House {house.id}", event_type='patient')
+
+        patients.append(patient)  # Add the patient to the global list
+        house.add_patient(patient.id)  # Add the patient ID to the house
+        log_event(f"New Patient Manually Generated: ID: {patient.id}, Name: {patient.name}, Condition: {condition.code.get('display', 'Unknown')}", event_type='patient')
         socketio.emit('update_state', get_state())
 
 def generate_patients_automatically(llm_model=None):
