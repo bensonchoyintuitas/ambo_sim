@@ -4,6 +4,7 @@ from urllib3.util.retry import Retry
 import logging
 from threading import Lock
 import random
+import uuid
 
 # Create a session with connection pooling and retry strategy
 def create_session():
@@ -28,8 +29,8 @@ api_call_lock = Lock()
 def generate_fallback_patient():
     """Generate a simple fallback patient when API fails."""
     birth_year = random.randint(1923, 2023)  # Random year under 100 years old
-    given_name = "M" if random.choice(["male", "female"]) == "male" else "F"
-    patient_id = f"{given_name}-{random.randint(1000, 9999)}"  # Consistent ID with given name
+    given_name = ("M" if random.choice(["male", "female"]) == "male" else "F") + str(random.randint(1000, 9999))
+    patient_id = str(uuid.uuid4())   # Consistent ID with given name
     return {
         "patient": {
             "id": patient_id,
@@ -39,7 +40,7 @@ def generate_fallback_patient():
             "name": [{
                 "use": "official",
                 "family": "Doe",
-                "given": [f"{patient_id}"]
+                "given": [f"{given_name}"]
             }]
         }
     }

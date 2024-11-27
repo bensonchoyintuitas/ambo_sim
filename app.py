@@ -337,12 +337,15 @@ def generate_random_patient(llm_model=None):
             logging.info("Generating basic condition without LLM...")
             condition = generate_fallback_condition()
 
+        # Update the patient creation to handle missing birthDate
+        dob = fhir_resources['patient'].get('birthDate', 'Unknown')  # Default to 'Unknown' if birthDate is not present
+
         # Create patient object with Synthea data
         patient = Patient(
             id=patient_id,
             name=patient_name,
             condition=condition,
-            dob=fhir_resources['patient'].get('birthDate'),
+            dob=dob,  # Use the updated dob variable
             fhir_resources=fhir_resources
         )
         
@@ -351,7 +354,7 @@ def generate_random_patient(llm_model=None):
         
         # Update log message to include Synthea details
         log_parts = [
-            f"New Patient Generated:",
+            f"Auto Patient Generated:",
             f"ID: {patient_id}",
             f"Name: {patient_name}",
             f"DOB: {patient.dob}",
@@ -699,14 +702,26 @@ def handle_create_patient_at_house(data):
             id=patient_id,
             name=patient_name,
             condition=condition,
-            dob=None,  # You can set a default DOB if needed
-            condition_note=None,  # You can set a default note if needed
-            fhir_resources=None  # No FHIR resources for fallback
+            dob=fallback_patient['patient'].get('birthDate', 'Unknown'),  # Get DOB from FHIR resources
+            condition_note=condition.note,  # Use the note from the condition
+            fhir_resources=fallback_patient  # No FHIR resources for fallback
         )
 
         patients.append(patient)  # Add the patient to the global list
         house.add_patient(patient.id)  # Add the patient ID to the house
-        log_event(f"New Patient Manually Generated: ID: {patient.id}, Name: {patient.name}, Condition: {condition.code.get('display', 'Unknown')}", event_type='patient')
+        log_parts = [
+            f"Manual Patient Generated:",
+            f"ID: {patient_id}",
+            f"Name: {patient_name}",
+            f"DOB: {patient.dob}",
+            f"Condition: {condition.code.get('display', 'Unknown')}",
+            f"Severity: {condition.severity.get('display', 'Unknown')}",
+            f"Clinical Status: {condition.clinical_status.get('display', 'Unknown')}"
+        ]
+        
+        if condition.note:
+            log_parts.append(f"Notes: {condition.note}")
+        log_event(" | ".join(log_parts), event_type='patient')  # Log the formatted message
         socketio.emit('update_state', get_state())
 
 def generate_patients_automatically(llm_model=None):
