@@ -217,7 +217,7 @@ def log_event(message, event_type='general'):
 
 patients = []  # Global list to store all Patient objects
 
-def generate_fallback_condition():
+def generate_fallback_condition(patient_id):
     """Generate a basic condition without using LLM."""
     current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     
@@ -283,7 +283,7 @@ def generate_fallback_condition():
             "display": "Encounter Diagnosis"
         },
         code=chosen_condition,
-        subject_reference=f"Patient/{str(uuid.uuid4())}",
+        subject_reference=f"Patient/{patient_id}",
         onset_datetime=current_time,
         recorded_date=current_time,
         note=f"Patient presents with {chosen_condition['display']}"
@@ -338,7 +338,7 @@ def generate_fallback_encounter(patient_id, condition_id, hospital_id):
         "ECG monitoring"
     ]
     
-    return {
+    encounter = {
         'id': str(uuid.uuid4()),
         'status': 'finished',
         'type': [{'coding': [{'display': 'Emergency visit'}]}],
@@ -350,6 +350,16 @@ def generate_fallback_encounter(patient_id, condition_id, hospital_id):
         'reasonCode': [{'coding': [{'display': 'Emergency presentation'}]}],
         'procedure': [{'display': random.choice(procedures)}]
     }
+    
+    # Save the encounter to a file if OUTPUT_FHIR is enabled
+    if OUTPUT_FHIR and SESSION_DIR:
+        try:
+            save_fhir_resource('Encounter', encounter)
+            logging.info(f"Saved encounter FHIR resource for encounter {encounter['id']}")
+        except Exception as e:
+            logging.error(f"Error saving encounter FHIR resource: {str(e)}")
+    
+    return encounter
 
 # Add thread pool for parallel patient generation
 patient_generator_pool = ThreadPoolExecutor(max_workers=8)
@@ -375,10 +385,10 @@ def generate_random_patient(llm_model=None):
             request_counter.increment_requests()
             condition_fhir = generate_condition(patient_id, llm_model=llm_model)
             request_counter.increment_completed()
-            condition = Condition.from_fhir(condition_fhir) if condition_fhir else generate_fallback_condition()
+            condition = Condition.from_fhir(condition_fhir) if condition_fhir else generate_fallback_condition(patient_id)
         else:
             logging.info("Generating basic condition without LLM...")
-            condition = generate_fallback_condition()
+            condition = generate_fallback_condition(patient_id)
 
         dob = fhir_resources.get('patient', {}).get('birthDate', 'Unknown')
 

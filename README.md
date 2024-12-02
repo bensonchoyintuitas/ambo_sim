@@ -9,8 +9,8 @@ This simulator models an emergency medical services (EMS) system to help underst
 - Generate realistic healthcare datasets for testing and development
 - Support training for healthcare administrators and emergency response planners
 
-See [business_process.md](business_process.md) for the business process.
-See [fhir_process.md](fhir_process.md) for the FHIR resources and exchanges.
+See [business_process.md](business_process.md) for the idealbusiness process.
+See [fhir_process.md](fhir_process.md) for the idealFHIR resources and exchanges.
 
 **What you'll see:**
 - A rectangular canvas representing the town.
@@ -40,28 +40,72 @@ python3 app.py --no-llm # no LLM
 # output FHIR resources to file
 python3 app.py --no-llm --output-fhir
 
-
- # no Synthea
+ # llm choices
 python3 app.py --llm-model llama3.1:8b # better
 python3 app.py --llm-model llama3.2:1b 
 python3 app.py --llm-model gemma2:2b 
 python3 app.py --llm-model gemma:2b # worse
 python3 app.py --llm-model llama2:7b 
 ```
+# Command Line Switches
+
+## Core Switches
+`--no-llm`
+- Disables LLM integration for faster simulation
+- Uses basic patient/condition generation only
+- Recommended for testing or when speed is priority
+
+`--output-fhir` 
+- Enables saving of FHIR resources as JSON files
+- Creates timestamped session directory under output_fhir/
+- Organizes resources by type (patient, condition, etc)
+- Useful for data analysis and integration testing
+
+## LLM Model Selection
+`--llm-model <model>`
+Controls which LLM to use for enhancing patient data. Options:
+
+- `llama3.1:8b` (recommended)
+  - Best medical content accuracy
+  - Most reliable FHIR formatting
+  - Slower but highest quality
+
+- `llama3.2:1b`
+  - Faster than 8b model
+  - Reduced but acceptable accuracy
+  - Good for testing/development
+
+- `gemma2:2b` / `gemma:2b`
+  - Fastest option with LLM
+  - Less consistent medical content
+  - May require more validation
+
+- `llama2:7b`
+  - Legacy model included for comparison
+  - Not recommended for production use
+
+The LLM models trade off between speed and quality of generated content. The llama3.1:8b model is recommended for production use when accuracy is critical.
 
 
 # How the simulation works
 
+## Patient Flow
+   - Patient ID is created and added to house's patient array
+   - Available ambulance is dispatched and removes patient ID from house array 
+   - Patient ID is stored in ambulance's single slot during transport
+   - At hospital, patient ID moves from ambulance to hospital's patient array
+
+
 ## Data Flow and Components
 
-1. **Patient Generation**
+### Patient Generation
    - The simulation has three levels of patient generation - each with different levels of speed and richness:
     1. Random bare minimuum patient and condition (from small list) 
     2. Synthea API to generate base patient demographics and medical history
     3. Synthea API + LLM to generate more comprehensiveFHIR resources
    - Each generated patient serves as a "seed" for further simulation
 
-1.2. **LLM Enhancement**
+## LLM Enhancement (optional)
    - The LLM (either Llama 3.1 8B or Gemma 2B) processes Synthea patient data using a template prompt that:
      - Generates structured FHIR resources (Conditions, Observations)
      - Includes examples and clinical instructions
@@ -70,7 +114,9 @@ python3 app.py --llm-model llama2:7b
    - Llama 3.1 follows the template more reliably and produces more accurate medical content than Gemma
    - added no-llm option for speed
 
-2. **Simulation Components**
+
+## Simulation Components
+
    - Houses: Generate patients at random intervals. Each house maintains an array of patient IDs currently at that location
    - Ambulances: Transport patients between houses and hospitals. Each ambulance has a single patient ID slot that is filled during transport
    - Hospitals: Receive and process patients with configurable timing parameters:
@@ -84,14 +130,10 @@ python3 app.py --llm-model llama2:7b
        * Treatment begins when wait time >= WAITING_TIME and treating < MAX_TREATING
        * Patients are discharged after TREATING_TIME seconds
      - Real-time simulation tracks accumulated wait times per patient
-   - Patient Flow:
-     1. Patient ID is created and added to house's patient array
-     2. Available ambulance is dispatched and removes patient ID from house array
-     3. Patient ID is stored in ambulance's single slot during transport
-     4. At hospital, patient ID moves from ambulance to hospital's patient array
+
    - Each component maintains its own event log tracking patient movements
 
-4. **FHIR Resource Flow**
+## FHIR Resource Flow
    - Patient resources are created initially from Synthea
    - LLM enhances with additional resources during simulation
    - Resources follow the patient through the care journey
@@ -100,7 +142,7 @@ python3 app.py --llm-model llama2:7b
 The simulation combines realistic patient data from Synthea with LLM-enhanced medical scenarios, creating a dynamic emergency response system simulation.
 
 
-# Todo
+# Development plan
 
 # Stage 1
 - [x] Create patients as objects
@@ -116,18 +158,22 @@ The simulation combines realistic patient data from Synthea with LLM-enhanced me
 - [x] Find a better LLM for generating FHIR resources such as condition based on the seed patient from synthea
 - [x] Generate encounter and procedure resources
 - [x] Generate discharge event (to update existing encounter)
+
+# fhir_output
 - [ ] Output all FHIR resources to files
+- [ ] for no-llm no-synthea
+- [ ] for synthea
+- [ ] for llm
 - [ ] validate consistent fhir format for both LLM and NO LLM, and with and without synthea
 - [ ] validate consistent fhir format using fallback when using clickable patient
+
+# kafka_output
+- [ ] Send data to kafka
+
+
+# Stage 3
 - [ ] If an ambulance is wiating with patient - they cannot leave
 - [ ] Vary treatment time by severity
-
-
-
-# Stage 3 Send data to kafka
-
-# Stage 4 Improved ambulance sim
-- [ ] Train a custom LLM for generating FHIR resources correctly to a defined template
 - [ ] Speed things up (maybe pregen into CSVs and load from there)
 - [ ] Reflect more accurate patient flow (see [fhir_process.md](fhir_process.md))
 - [ ] Have patient-centric view of flow events (filterable)
