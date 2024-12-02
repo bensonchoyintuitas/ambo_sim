@@ -67,15 +67,35 @@ def generate_fallback_patient(session_dir=None):
         }
     }
 
-def generate_fhir_resources():
+def generate_fhir_resources(session_dir=None):
     """Thread-safe function to generate FHIR resources using Synthea API."""
     session = create_session()
-    output_dir = f"output_fhir/session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    output_dir = session_dir or f"output_fhir/session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     try:
         with api_call_lock:
+            logging.info(f"Calling Synthea API with session_dir: {session_dir}")
             response = session.post('http://localhost:5001/generate_patient_bundle')
             response.raise_for_status()
-            return response.json()
+            patient_data = response.json()
+            
+            # Save the FHIR patient resource if session_dir is provided
+            if session_dir:
+                try:
+                    patient_dir = os.path.join(session_dir, 'patient')
+                    os.makedirs(patient_dir, exist_ok=True)
+                    
+                    patient_id = patient_data['patient']['id']
+                    filename = f"patient_{patient_id}.json"
+                    filepath = os.path.join(patient_dir, filename)
+                    with open(filepath, 'w') as f:
+                        json.dump(patient_data['patient'], f, indent=2)
+                    logging.info(f"Successfully saved patient {patient_id} to {filepath}")
+                except Exception as e:
+                    logging.error(f"Error saving FHIR patient resource: {str(e)}")
+            else:
+                logging.warning("No session_dir provided, skipping patient file save")
+            
+            return patient_data
     except requests.exceptions.RequestException as e:
         logging.error(f"Error generating FHIR resources: {str(e)}")
         logging.info("Using fallback patient generation")

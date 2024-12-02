@@ -404,16 +404,19 @@ def generate_random_patient(llm_model=None):
     random_house = random.choice(houses)
     
     try:
-        # Try to use Synthea API first
+        # Try to use Synthea API first, passing SESSION_DIR
         logging.info("Attempting to generate patient using Synthea API...")
-        patient_data = generate_fhir_resources()  # Try API first
+        patient_data = generate_fhir_resources(SESSION_DIR)  # Pass SESSION_DIR here
         
         if not patient_data or 'error' in patient_data:
             logging.info("Synthea API failed, using fallback patient generation")
-            patient_data = generate_fallback_patient(SESSION_DIR)  # Fallback only if API fails
+            patient_data = generate_fallback_patient(SESSION_DIR)
             
         fhir_resources = patient_data.get('fhir_resources', {})
         patient_resource = patient_data.get('patient', {})
+        
+        # Add logging to debug patient data
+        logging.info(f"Generated patient data: {patient_resource.get('id', 'NO_ID')}")
         
         # Generate condition using either API data or fallback
         if USE_LLM:

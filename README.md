@@ -191,13 +191,16 @@ The system generates two distinct types of encounter messages that should be han
 - [x] Generate encounter and procedure resources
 - [x] Generate discharge event (to update existing encounter)
 
-# fhir_output
-- [ ] Output all FHIR resources to files
-- [ ] for no-llm no-synthea
-- [ ] for synthea
+# fhir_output - Output all FHIR resources to files
+- [x] for no-llm no-synthea
+- [x] for synthea
 - [ ] for llm
+- [ ] for clickable patient
 - [ ] validate consistent fhir format for both LLM and NO LLM, and with and without synthea
 - [ ] validate consistent fhir format using fallback when using clickable patient
+- [ ] conform to synthea as base template for fallback
+
+
 
 # kafka_output
 - [ ] Send data to kafka
