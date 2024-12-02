@@ -37,6 +37,10 @@ https://github.com/bensonchoyintuitas/synthea_api
 source .venv/bin/activate 
 python3 app.py --no-llm # no LLM
 
+# output FHIR resources to file
+python3 app.py --no-llm --output-fhir
+
+
  # no Synthea
 python3 app.py --llm-model llama3.1:8b # better
 python3 app.py --llm-model llama3.2:1b 

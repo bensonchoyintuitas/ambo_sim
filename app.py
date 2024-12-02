@@ -6,7 +6,7 @@ from threading import Thread, Lock
 import math
 from datetime import datetime, timezone
 import json
-from generate_synthea_patient import generate_fhir_resources  # Update this import
+from generate_synthea_patient import generate_fallback_patient  # Import the function
 import uuid
 import logging
 from ai.generate_condition import generate_condition
@@ -17,6 +17,7 @@ import functools
 from argparse import ArgumentParser
 import atexit  # Add this import
 from generate_synthea_patient import generate_fallback_patient  # Import the function
+import os  # Add this if not already present
 
 # Configure logging
 logging.basicConfig(
@@ -39,6 +40,9 @@ DEFAULT_LLM_MODEL = 'llama3.1:8b'  # Default LLM model to use
 PATIENT_GENERATION_LOWER_BOUND = 5  # Lower bound for patient generation delay
 PATIENT_GENERATION_UPPER_BOUND = 10  # Upper bound for patient generation delay
 USE_LLM = True  # Default value, will be updated by command line args
+OUTPUT_FHIR = False  # Default value, will be updated by command line args
+FHIR_OUTPUT_DIR = "output_fhir"  # Base directory for FHIR outputs
+SESSION_DIR = None  # Will be set at runtime if OUTPUT_FHIR is True
 
 class Condition:
     def __init__(self, id, clinical_status, verification_status, severity, category, 
@@ -319,12 +323,15 @@ def generate_random_patient(llm_model=None):
     random_house = random.choice(houses)
     
     try:
-        # Generate FHIR resources first
-        fhir_resources = generate_fhir_resources()  # This should contain patient demographics
-        patient_id = fhir_resources['patient'].get('id', f"pat-{random.randint(1000, 9999)}")
+        # Instead of importing generate_fhir_resources, use generate_fallback_patient
+        # which should now return both the patient and FHIR resources
+        patient_data = generate_fallback_patient(SESSION_DIR)
+        fhir_resources = patient_data.get('fhir_resources', {})
+        
+        patient_id = fhir_resources.get('patient', {}).get('id', f"pat-{random.randint(1000, 9999)}")
         patient_name = (
-            f"{fhir_resources['patient'].get('name', [{}])[0].get('given', ['Patient'])[0]} "
-            f"{fhir_resources['patient'].get('name', [{}])[0].get('family', str(patient_id[-4:]))}"
+            f"{fhir_resources.get('patient', {}).get('name', [{}])[0].get('given', ['Patient'])[0]} "
+            f"{fhir_resources.get('patient', {}).get('name', [{}])[0].get('family', str(patient_id[-4:]))}"
         )
         
         if USE_LLM:
@@ -337,15 +344,13 @@ def generate_random_patient(llm_model=None):
             logging.info("Generating basic condition without LLM...")
             condition = generate_fallback_condition()
 
-        # Update the patient creation to handle missing birthDate
-        dob = fhir_resources['patient'].get('birthDate', 'Unknown')  # Default to 'Unknown' if birthDate is not present
+        dob = fhir_resources.get('patient', {}).get('birthDate', 'Unknown')
 
-        # Create patient object with Synthea data
         patient = Patient(
             id=patient_id,
             name=patient_name,
             condition=condition,
-            dob=dob,  # Use the updated dob variable
+            dob=dob,
             fhir_resources=fhir_resources
         )
         
@@ -694,7 +699,8 @@ def handle_create_patient_at_house(data):
         condition = generate_fallback_condition()  # Use the fallback condition generation
 
         # Generate a fallback patient
-        fallback_patient = generate_fallback_patient()
+        output_dir = "output_fhir/session_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+        fallback_patient = generate_fallback_patient(output_dir)
         patient_id = fallback_patient['patient']['id']  # Get ID from fallback patient
         patient_name = fallback_patient['patient']['name'][0]['given'][0]  # Get name from fallback patient
 
@@ -730,11 +736,6 @@ def generate_patients_automatically(llm_model=None):
         generate_random_patient(llm_model)
         time.sleep(random.randint(PATIENT_GENERATION_LOWER_BOUND, PATIENT_GENERATION_UPPER_BOUND))  # Random interval between 1 to 5 seconds
 
-# Start background threads for simulation
-Thread(target=lambda: generate_patients_automatically(DEFAULT_LLM_MODEL)).start()
-Thread(target=move_ambulances).start()
-Thread(target=manage_hospital_queues).start()
-
 def reset_simulation():
     """Reset the simulation to its initial state."""
     global houses, hospitals, ambulances, event_log
@@ -763,17 +764,72 @@ def handle_reset_simulation():
     """Handle the reset simulation event from the client."""
     reset_simulation()
 
+def initialize_fhir_session():
+    """Initialize a new session directory for FHIR outputs."""
+    global SESSION_DIR
+    if not OUTPUT_FHIR:
+        return
+
+    try:
+        # Create base directory if it doesn't exist
+        os.makedirs(FHIR_OUTPUT_DIR, exist_ok=True)
+        
+        # Create session directory with timestamp
+        session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        SESSION_DIR = os.path.join(FHIR_OUTPUT_DIR, f"session_{session_timestamp}")
+        os.makedirs(SESSION_DIR, exist_ok=True)
+        os.makedirs(os.path.join(SESSION_DIR, 'fhir'), exist_ok=True)
+        
+        logging.info(f"Initialized FHIR output session at {SESSION_DIR}")
+    except Exception as e:
+        logging.error(f"Error initializing FHIR session directory: {str(e)}")
+        SESSION_DIR = None
+
+def save_fhir_resource(resource_type, resource):
+    """Save a FHIR resource to a JSON file if OUTPUT_FHIR is enabled."""
+    if not OUTPUT_FHIR or SESSION_DIR is None:
+        return
+
+    try:
+        # Create resource type directory within session directory
+        resource_dir = os.path.join(SESSION_DIR, resource_type.lower())
+        os.makedirs(resource_dir, exist_ok=True)
+
+        # Generate filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        resource_id = resource.get('id', 'unknown')
+        filename = f"{resource_type.lower()}_{resource_id}_{timestamp}.json"
+        
+        # Save the resource
+        filepath = os.path.join(resource_dir, filename)
+        with open(filepath, 'w') as f:
+            json.dump(resource, f, indent=2)
+            
+        logging.debug(f"Saved FHIR resource to {filepath}")
+    except Exception as e:
+        logging.error(f"Error saving FHIR resource: {str(e)}")
+
+# Add at the top of the file with other imports
+file_operation_lock = Lock()
+
 if __name__ == '__main__':
     parser = ArgumentParser(description='Run the ambulance simulation')
     parser.add_argument('--llm-model', type=str, default=DEFAULT_LLM_MODEL,
                        help=f'LLM model to use (default: {DEFAULT_LLM_MODEL})')
     parser.add_argument('--no-llm', action='store_true',
                        help='Run simulation without LLM integration')
+    parser.add_argument('--output-fhir', action='store_true',
+                       help='Output FHIR resources as JSON files')
     
     args = parser.parse_args()
     
-    # Update global USE_LLM flag
+    # Update global flags
     USE_LLM = not args.no_llm
+    OUTPUT_FHIR = args.output_fhir
+    
+    if OUTPUT_FHIR:
+        initialize_fhir_session()  # Initialize the global session directory
+        logging.info(f"FHIR resources will be saved to {SESSION_DIR}/")
     
     if USE_LLM:
         logging.info(f"Running simulation with LLM")

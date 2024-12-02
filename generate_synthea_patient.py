@@ -5,6 +5,9 @@ import logging
 from threading import Lock
 import random
 import uuid
+import os
+import json
+from datetime import datetime
 
 # Create a session with connection pooling and retry strategy
 def create_session():
@@ -26,30 +29,49 @@ def create_session():
 # Add a lock for the API call
 api_call_lock = Lock()
 
-def generate_fallback_patient():
-    """Generate a simple fallback patient when API fails."""
-    birth_year = random.randint(1923, 2023)  # Random year under 100 years old
-    given_name = ("M" if random.choice(["male", "female"]) == "male" else "F") + str(random.randint(1000, 9999))
-    patient_id = str(uuid.uuid4())   # Consistent ID with given name
+def generate_fallback_patient(session_dir=None):
+    """Generate a basic patient with minimal FHIR resources."""
+    # Generate basic patient data
+    patient_id = f"pat-{random.randint(1000, 9999)}"
+    given_name = random.choice(['John', 'Jane', 'Bob', 'Alice', 'Charlie'])
+    family_name = random.choice(['Smith', 'Johnson', 'Williams', 'Brown', 'Jones'])
+    
+    # Create FHIR patient resource
+    fhir_patient = {
+        'resourceType': 'Patient',
+        'id': patient_id,
+        'name': [{
+            'given': [given_name],
+            'family': family_name
+        }],
+        'birthDate': '1970-01-01'  # Default birthdate
+    }
+    
+    # If session_dir is provided, save the FHIR resource
+    if session_dir:
+        try:
+            patient_dir = os.path.join(session_dir, 'fhir', 'patient')
+            os.makedirs(patient_dir, exist_ok=True)
+            
+            filename = f"Patient_{patient_id}.json"
+            filepath = os.path.join(patient_dir, filename)
+            with open(filepath, 'w') as f:
+                json.dump(fhir_patient, f, indent=2)
+        except Exception as e:
+            logging.error(f"Error saving FHIR patient resource: {str(e)}")
+    
     return {
-        "patient": {
-            "id": patient_id,
-            "resourceType": "Patient",
-            "gender": random.choice(["male", "female"]),
-            "birthDate": f"{birth_year}-01-01",  # Valid birthdate
-            "name": [{
-                "use": "official",
-                "family": "Doe",
-                "given": [f"{given_name}"]
-            }]
+        'patient': fhir_patient,
+        'fhir_resources': {
+            'patient': fhir_patient
         }
     }
 
 def generate_fhir_resources():
     """Thread-safe function to generate FHIR resources using Synthea API."""
     session = create_session()
+    output_dir = f"output_fhir/session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     try:
-        # Use lock to ensure thread safety of API calls
         with api_call_lock:
             response = session.post('http://localhost:5001/generate_patient_bundle')
             response.raise_for_status()
@@ -57,6 +79,6 @@ def generate_fhir_resources():
     except requests.exceptions.RequestException as e:
         logging.error(f"Error generating FHIR resources: {str(e)}")
         logging.info("Using fallback patient generation")
-        return generate_fallback_patient()
+        return generate_fallback_patient(output_dir)
     finally:
-        session.close() 
+        session.close()
