@@ -6,7 +6,7 @@ from threading import Thread, Lock
 import math
 from datetime import datetime, timezone
 import json
-from generate_synthea_patient import generate_fallback_patient  # Import the function
+from generate_synthea_patient import generate_fallback_patient, generate_fhir_resources  # Import the function
 import uuid
 import logging
 from ai.generate_condition import generate_condition
@@ -404,61 +404,59 @@ def generate_random_patient(llm_model=None):
     random_house = random.choice(houses)
     
     try:
-        # Instead of importing generate_fhir_resources, use generate_fallback_patient
-        # which should now return both the patient and FHIR resources
-        patient_data = generate_fallback_patient(SESSION_DIR)
+        # Try to use Synthea API first
+        logging.info("Attempting to generate patient using Synthea API...")
+        patient_data = generate_fhir_resources()  # Try API first
+        
+        if not patient_data or 'error' in patient_data:
+            logging.info("Synthea API failed, using fallback patient generation")
+            patient_data = generate_fallback_patient(SESSION_DIR)  # Fallback only if API fails
+            
         fhir_resources = patient_data.get('fhir_resources', {})
+        patient_resource = patient_data.get('patient', {})
         
-        patient_id = fhir_resources.get('patient', {}).get('id', f"pat-{random.randint(1000, 9999)}")
-        patient_name = (
-            f"{fhir_resources.get('patient', {}).get('name', [{}])[0].get('given', ['Patient'])[0]} "
-            f"{fhir_resources.get('patient', {}).get('name', [{}])[0].get('family', str(patient_id[-4:]))}"
-        )
-        
+        # Generate condition using either API data or fallback
         if USE_LLM:
-            logging.info("Generating condition with LLM...")
             request_counter.increment_requests()
-            condition_fhir = generate_condition(patient_id, llm_model=llm_model)
+            condition = generate_condition(
+                patient_id=patient_resource['id'],
+                llm_model=llm_model
+            )
             request_counter.increment_completed()
-            condition = Condition.from_fhir(condition_fhir) if condition_fhir else generate_fallback_condition()
         else:
-            logging.info("Generating basic condition without LLM...")
-            condition = generate_fallback_condition(patient_id)
-
-        dob = fhir_resources.get('patient', {}).get('birthDate', 'Unknown')
-
+            condition = generate_fallback_condition(patient_resource['id'])
+        
+        # Create Patient object
         patient = Patient(
-            id=patient_id,
-            name=patient_name,
+            id=patient_resource['id'],
+            name=patient_resource['name'][0]['given'][0],  # Take first given name
             condition=condition,
-            dob=dob,
+            dob=patient_resource.get('birthDate', 'Unknown'),
+            condition_note=condition.note if condition else None,
             fhir_resources=fhir_resources
         )
         
         patients.append(patient)
         random_house.add_patient(patient.id)
         
-        # Update log message to include Synthea details
+        # Log patient generation
         log_parts = [
-            f"Auto Patient Generated:",
-            f"ID: {patient_id}",
-            f"Name: {patient_name}",
+            f"Patient Generated:",
+            f"ID: {patient.id}",
+            f"Name: {patient.name}",
             f"DOB: {patient.dob}",
-            f"Condition: {condition.code.get('display', 'Unknown')}",
-            f"Severity: {condition.severity.get('display', 'Unknown')}",
-            f"Clinical Status: {condition.clinical_status.get('display', 'Unknown')}"
+            f"Condition: {condition.code.get('display', 'Unknown') if condition else 'Unknown'}",
+            f"Severity: {condition.severity.get('display', 'Unknown') if condition else 'Unknown'}"
         ]
         
-        if condition.note:
+        if condition and condition.note:
             log_parts.append(f"Notes: {condition.note}")
-            
+        
         log_event(" | ".join(log_parts), event_type='patient')
         socketio.emit('update_state', get_state())
-        return patient
         
     except Exception as e:
         logging.error(f"Error in generate_random_patient: {str(e)}")
-        return generate_fallback_patient(random_house)
 
 def move_ambulances():
     """Move ambulances to pick up patients and take them to the nearest hospital."""
