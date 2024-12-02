@@ -1,5 +1,13 @@
 # Ambulance simulator
-a rectangular map to represent the town. Then some houses on the left. Hospitals on the right. and ambulances travelling between the houses and hospitals. In the houses, patients appear and then are taken from the houses to the hospitals.
+
+This simulator models an emergency medical services (EMS) system to help understand, test, and optimize emergency response workflows. It creates a virtual environment where ambulances respond to medical emergencies, transport patients to hospitals, and hospitals manage patient care through triage and treatment.
+
+**Key purposes:**
+- Test and visualize emergency response workflows
+- Demonstrate FHIR (Fast Healthcare Interoperability Resources) implementation in healthcare
+- Analyze system performance, wait times, and resource allocation
+- Generate realistic healthcare datasets for testing and development
+- Support training for healthcare administrators and emergency response planners
 
 See [business_process.md](business_process.md) for the business process.
 See [fhir_process.md](fhir_process.md) for the FHIR resources and exchanges.
@@ -42,11 +50,14 @@ python3 app.py --llm-model llama2:7b
 
 ## Data Flow and Components
 
-1. **Patient Generation (Synthea)**
-   - The simulation uses Synthea API to generate base patient demographics and medical history
+1. **Patient Generation**
+   - The simulation has three levels of patient generation - each with different levels of speed and richness:
+    1. Random bare minimuum patient and condition (from small list) 
+    2. Synthea API to generate base patient demographics and medical history
+    3. Synthea API + LLM to generate more comprehensiveFHIR resources
    - Each generated patient serves as a "seed" for further simulation
 
-2. **LLM Enhancement**
+1.2. **LLM Enhancement**
    - The LLM (either Llama 3.1 8B or Gemma 2B) processes Synthea patient data using a template prompt that:
      - Generates structured FHIR resources (Conditions, Observations)
      - Includes examples and clinical instructions
@@ -55,7 +66,7 @@ python3 app.py --llm-model llama2:7b
    - Llama 3.1 follows the template more reliably and produces more accurate medical content than Gemma
    - added no-llm option for speed
 
-3. **Simulation Components**
+2. **Simulation Components**
    - Houses: Generate patients at random intervals. Each house maintains an array of patient IDs currently at that location
    - Ambulances: Transport patients between houses and hospitals. Each ambulance has a single patient ID slot that is filled during transport
    - Hospitals: Receive and process patients with configurable timing parameters:
@@ -101,6 +112,7 @@ The simulation combines realistic patient data from Synthea with LLM-enhanced me
 - [x] Find a better LLM for generating FHIR resources such as condition based on the seed patient from synthea
 - [x] Generate encounter and procedure resources
 - [x] Generate discharge event (to update existing encounter)
+- [ ] Output all FHIR resources to files
 - [ ] validate consistent fhir format for both LLM and NO LLM, and with and without synthea
 - [ ] validate consistent fhir format using fallback when using clickable patient
 - [ ] If an ambulance is wiating with patient - they cannot leave
