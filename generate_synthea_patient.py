@@ -53,7 +53,7 @@ def generate_fallback_patient(session_dir=None):
             patient_dir = os.path.join(session_dir, 'patient')
             os.makedirs(patient_dir, exist_ok=True)
             
-            filename = f"Patient_{patient_id}.json"
+            filename = f"patient_{patient_id}.json"
             filepath = os.path.join(patient_dir, filename)
             with open(filepath, 'w') as f:
                 json.dump(fhir_patient, f, indent=2)

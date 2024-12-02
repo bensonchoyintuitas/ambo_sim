@@ -318,7 +318,7 @@ def generate_fallback_condition(patient_id):
                 "recordedDate": condition.recorded_date,
                 "note": [{"text": condition.note}]
             }
-            save_fhir_resource('Condition', condition_fhir)
+            save_fhir_resource('condition', condition_fhir)
             logging.info(f"Saved condition FHIR resource for condition {condition.id}")
         except Exception as e:
             logging.error(f"Error saving condition FHIR resource: {str(e)}")
@@ -354,12 +354,47 @@ def generate_fallback_encounter(patient_id, condition_id, hospital_id):
     # Save the encounter to a file if OUTPUT_FHIR is enabled
     if OUTPUT_FHIR and SESSION_DIR:
         try:
-            save_fhir_resource('Encounter', encounter)
+            save_fhir_resource('encounter_ed_presentation', encounter)
             logging.info(f"Saved encounter FHIR resource for encounter {encounter['id']}")
         except Exception as e:
             logging.error(f"Error saving encounter FHIR resource: {str(e)}")
     
     return encounter
+
+def generate_discharge_for_patient(hospital, patient):
+    """Process discharge for a single patient"""
+    try:
+        if patient.encounters:
+            original_encounter = patient.encounters[-1]
+            start_time = original_encounter['period']['start']
+            end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            discharge = generate_discharge(
+                encounter_id=original_encounter['id'],
+                start_time=start_time,
+                end_time=end_time
+            )
+            
+            patient.encounters.append(discharge)
+            
+            # Save the discharge encounter to file if OUTPUT_FHIR is enabled
+            if OUTPUT_FHIR and SESSION_DIR:
+                try:
+                    save_fhir_resource('encounter_discharge', discharge)
+                    logging.info(f"Saved discharge encounter FHIR resource for encounter {discharge['id']}")
+                except Exception as e:
+                    logging.error(f"Error saving discharge encounter FHIR resource: {str(e)}")
+            
+            # Add discharge event logging
+            discharge_summary = (
+                f"{patient.name} discharged from Hospital {hospital.id} | "
+                f"Condition: {patient.condition.code.get('display', 'Unknown')} | "
+                f"Total time in hospital: {patient.wait_time} seconds"
+            )
+            log_event(discharge_summary, event_type='hospital')
+    except Exception as e:
+        logging.error(f"Error generating discharge: {str(e)}")
+        log_event(f"Error processing discharge for {patient.name}", event_type='hospital')
 
 # Add thread pool for parallel patient generation
 patient_generator_pool = ThreadPoolExecutor(max_workers=8)
@@ -385,7 +420,7 @@ def generate_random_patient(llm_model=None):
             request_counter.increment_requests()
             condition_fhir = generate_condition(patient_id, llm_model=llm_model)
             request_counter.increment_completed()
-            condition = Condition.from_fhir(condition_fhir) if condition_fhir else generate_fallback_condition(patient_id)
+            condition = Condition.from_fhir(condition_fhir) if condition_fhir else generate_fallback_condition()
         else:
             logging.info("Generating basic condition without LLM...")
             condition = generate_fallback_condition(patient_id)
@@ -683,35 +718,6 @@ def manage_hospital_queues():
 
         socketio.emit('update_state', get_state())
         time.sleep(1)
-
-# Add this helper function
-def generate_discharge_for_patient(hospital, patient):
-    """Process discharge for a single patient"""
-    try:
-        if patient.encounters:
-            original_encounter = patient.encounters[-1]
-            start_time = original_encounter['period']['start']
-            end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            
-            discharge = generate_discharge(
-                encounter_id=original_encounter['id'],
-                start_time=start_time,
-                end_time=end_time
-            )
-            
-            patient.encounters.append(discharge)
-            
-            # Add discharge event logging
-            discharge_summary = (
-                f"{patient.name} discharged from Hospital {hospital.id} | "
-                f"Condition: {patient.condition.code.get('display', 'Unknown')} | "
-                f"Total time in hospital: {patient.wait_time} seconds"
-            )
-            log_event(discharge_summary, event_type='hospital')
-            
-    except Exception as e:
-        logging.error(f"Error generating discharge: {str(e)}")
-        log_event(f"Error processing discharge for {patient.name}", event_type='hospital')
 
 def log_hospital_event(message):
     """Log events specific to hospital operations."""

@@ -142,6 +142,38 @@ The LLM models trade off between speed and quality of generated content. The lla
 The simulation combines realistic patient data from Synthea with LLM-enhanced medical scenarios, creating a dynamic emergency response system simulation.
 
 
+## Kafka Consumer Notes
+
+### FHIR Message Handling
+
+The system generates two distinct types of encounter messages that should be handled differently in the Kafka consumer:
+
+1. **Initial Emergency Encounters**
+   - Generated when patient first arrives at hospital
+   - Contains full emergency visit details including:
+     - Priority (Urgent)
+     - Service Type (Emergency Medicine)
+     - Initial diagnosis
+     - Procedures performed
+     - Start time only in period
+
+2. **Discharge Encounters**
+   - Generated when patient is discharged
+   - References original encounter via `partOf`
+   - Contains:
+     - End time in period
+     - Discharge disposition
+     - Final diagnosis/outcomes
+   - Links back to original emergency encounter
+
+### Consumer Implementation Considerations
+- Need separate message handlers for initial encounters vs discharges
+- Track encounter relationships (original -> discharge)
+- Consider implementing state tracking to link encounters
+- Ensure FHIR references maintain integrity across messages
+- May want to update original encounter when discharge occurs
+
+
 # Development plan
 
 # Stage 1
