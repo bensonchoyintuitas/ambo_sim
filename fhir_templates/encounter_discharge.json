@@ -1,0 +1,22 @@
+{
+    "resourceType": "Encounter",
+    "id": "<encounter-id>",
+    "status": "completed",
+    "hospitalization": {
+      "dischargeDisposition": {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/discharge-disposition",
+            "code": "home",
+            "display": "Discharged to home"
+          }
+        ],
+        "text": "Discharged to home"
+      }
+    },
+    "period": {
+      "start": "<encounter-start-date>",
+      "end": "<encounter-end-date>"
+    }
+  }
+  

@@ -1,0 +1,61 @@
+{
+    "resourceType": "Condition",
+    "id": "<condition-id>",
+    "clinicalStatus": {
+      "coding": [
+        {
+          "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+          "code": "<clinical-status-code>", <!-- e.g., active, inactive, resolved -->
+          "display": "<clinical-status-display>"
+        }
+      ]
+    },
+    "verificationStatus": {
+      "coding": [
+        {
+          "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+          "code": "<verification-status-code>", <!-- e.g., confirmed, unconfirmed -->
+          "display": "<verification-status-display>"
+        }
+      ]
+    },
+    "category": [
+      {
+        "coding": [
+          {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+            "code": "<category-code>", <!-- e.g., symptom, diagnosis -->
+            "display": "<category-display>"
+          }
+        ]
+      }
+    ],
+    "code": {
+      "coding": [
+        {
+          "system": "http://snomed.info/sct",
+          "code": "<condition-code>", <!-- e.g., SNOMED code for condition -->
+          "display": "<condition-display>"
+        }
+      ],
+      "text": "<condition-text>"
+    },
+    "subject": {
+      "reference": "Patient/<patient-id>"
+    },
+    "encounter": {
+      "reference": "Encounter/<encounter-id>",
+      "display": "<encounter-display>"
+    },
+    "onsetDateTime": "<onset-date>", <!-- e.g., YYYY-MM-DD -->
+    "abatementDateTime": "<abatement-date>", <!-- optional, YYYY-MM-DD -->
+    "recordedDate": "<recorded-date>", <!-- YYYY-MM-DD -->
+    "recorder": {
+      "reference": "Practitioner/<practitioner-id>",
+      "display": "<recorder-display>"
+    },
+    "asserter": {
+      "reference": "Practitioner/<asserter-id>",
+      "display": "<asserter-display>"
+    }
+  }

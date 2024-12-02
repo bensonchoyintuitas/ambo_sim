@@ -4,18 +4,86 @@ import random
 import time
 from threading import Thread, Lock
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 import json
-from ai.generate_patient import generate_fhir_resources  # Add this import at the top
+from generate_synthea_patient import generate_fhir_resources  # Update this import
 import uuid
+import logging
+from ai.generate_condition import generate_condition
+from ai.generate_encounter import generate_encounter
+from ai.generate_encounter_discharge import generate_discharge
+from concurrent.futures import ThreadPoolExecutor
+import functools
+from argparse import ArgumentParser
+import atexit  # Add this import
+from generate_synthea_patient import generate_fallback_patient  # Import the function
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('simulation.log'),
+        logging.StreamHandler()
+    ]
+)
 
 app = Flask(__name__)
 socketio = SocketIO(app)
 
 # Configurable variables
-MAX_TREATING = 4
-WAITING_TIME = 1  # seconds
-TREATING_TIME = 30  # seconds
+GLOBAL_MAX_PATIENTS_PER_HOSPITAL = 2  # Maximum patients that can be treated simultaneously in each hospital
+WAITING_TIME = 2  # seconds
+TREATING_TIME = 40  # seconds
+DEFAULT_LLM_MODEL = 'llama3.1:8b'  # Default LLM model to use
+PATIENT_GENERATION_LOWER_BOUND = 5  # Lower bound for patient generation delay
+PATIENT_GENERATION_UPPER_BOUND = 10  # Upper bound for patient generation delay
+USE_LLM = True  # Default value, will be updated by command line args
+
+class Condition:
+    def __init__(self, id, clinical_status, verification_status, severity, category, 
+                 code, subject_reference, onset_datetime, recorded_date, note):
+        self.id = id
+        self.clinical_status = clinical_status
+        self.verification_status = verification_status
+        self.severity = severity
+        self.category = category
+        self.code = code
+        self.subject_reference = subject_reference
+        self.onset_datetime = onset_datetime
+        self.recorded_date = recorded_date
+        self.note = note
+
+    @classmethod
+    def from_fhir(cls, fhir_condition):
+        """Create a Condition object from a FHIR Condition resource"""
+        return cls(
+            id=fhir_condition.get('id'),
+            clinical_status=fhir_condition.get('clinicalStatus', {}).get('coding', [{}])[0],
+            verification_status=fhir_condition.get('verificationStatus', {}).get('coding', [{}])[0],
+            severity=fhir_condition.get('severity', {}).get('coding', [{}])[0],
+            category=fhir_condition.get('category', [{}])[0].get('coding', [{}])[0],
+            code=fhir_condition.get('code', {}).get('coding', [{}])[0],
+            subject_reference=fhir_condition.get('subject', {}).get('reference'),
+            onset_datetime=fhir_condition.get('onsetDateTime'),
+            recorded_date=fhir_condition.get('recordedDate'),
+            note=fhir_condition.get('note', [{}])[0].get('text')
+        )
+
+    def to_dict(self):
+        """Convert Condition object to dictionary for JSON serialization"""
+        return {
+            'id': self.id,
+            'clinical_status': self.clinical_status,
+            'verification_status': self.verification_status,
+            'severity': self.severity,
+            'category': self.category,
+            'code': self.code,
+            'subject_reference': self.subject_reference,
+            'onset_datetime': self.onset_datetime,
+            'recorded_date': self.recorded_date,
+            'note': self.note
+        }
 
 class Patient:
     def __init__(self, id, name, condition, condition_severity=None, dob=None, condition_note=None, fhir_resources=None):
@@ -27,6 +95,7 @@ class Patient:
         self.condition_note = condition_note
         self.wait_time = 0
         self.fhir_resources = fhir_resources or {}
+        self.encounters = []  # Add list to store encounters
 
 class Ambulance:
     def __init__(self, id, x, y):
@@ -72,10 +141,11 @@ class Hospital:
         self.discharged = []  # Queue for discharged patients
 
     def add_patient_to_waiting(self, patient):
-        self.waiting.append(patient)  # Ensure patient object is added
+        self.waiting.append(patient)
+        log_event(f"{patient.name} has arrived at Hospital {self.id} and entered waiting queue", event_type='hospital')
 
     def move_patient_to_treating(self):
-        if self.waiting and len(self.treating) < MAX_TREATING:
+        if self.waiting and len(self.treating) < GLOBAL_MAX_PATIENTS_PER_HOSPITAL:
             patient = self.waiting.pop(0)  # Remove the first patient from the waiting queue
             self.treating.append(patient)
             patient.wait_time = 0  # Reset wait time
@@ -83,9 +153,20 @@ class Hospital:
         return None
 
     def discharge_patient(self):
+        """Move patient from treating to discharged queue."""
         if self.treating:
-            patient = self.treating.pop(0)  # Remove the first patient from the treating queue
-            self.discharged.append(patient)
+            patient = self.treating.pop(0)  # Remove from treating queue
+            self.discharged.append(patient)  # Add to discharged queue
+            
+            # Add log event for patient moving to discharged list
+            discharge_details = (
+                f"{patient.name} moved to discharged list | "
+                f"Hospital {self.id} | "
+                f"Condition: {patient.condition.code.get('display', 'Unknown')} | "
+                f"Treatment duration: {patient.wait_time} seconds"
+            )
+            log_event(discharge_details, event_type='hospital')
+            
             return patient
         return None
 
@@ -132,169 +213,166 @@ def log_event(message, event_type='general'):
 
 patients = []  # Global list to store all Patient objects
 
-def generate_random_patient():
+def generate_fallback_condition():
+    """Generate a basic condition without using LLM."""
+    current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    
+    # List of sample conditions
+    conditions = [
+        {
+            'code': '427623005',
+            'display': 'Chest Pain'
+        },
+        {
+            'code': '422400008',
+            'display': 'Vomiting'
+        },
+        {
+            'code': '39848009',
+            'display': 'Wheezing'
+        },
+        {
+            'code': '62315008',
+            'display': 'Dizziness'
+        },
+        {
+            'code': '25064002',
+            'display': 'Headache'
+        }
+    ]
+    
+    # List of sample severities
+    severities = [
+        {
+            'code': '24484000',
+            'display': 'Severe'
+        },
+        {
+            'code': '6736007',
+            'display': 'Moderate'
+        },
+        {
+            'code': '255604002',
+            'display': 'Mild'
+        }
+    ]
+    
+    chosen_condition = random.choice(conditions)
+    chosen_severity = random.choice(severities)
+    
+    return Condition(
+        id=str(uuid.uuid4()),
+        clinical_status={
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active",
+            "display": "Active"
+        },
+        verification_status={
+            "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+            "code": "confirmed",
+            "display": "Confirmed"
+        },
+        severity=chosen_severity,
+        category={
+            "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+            "code": "encounter-diagnosis",
+            "display": "Encounter Diagnosis"
+        },
+        code=chosen_condition,
+        subject_reference=f"Patient/{str(uuid.uuid4())}",
+        onset_datetime=current_time,
+        recorded_date=current_time,
+        note=f"Patient presents with {chosen_condition['display']}"
+    )
+
+def generate_fallback_encounter(patient_id, condition_id, hospital_id):
+    """Generate a basic encounter without using LLM."""
+    current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    
+    # Sample procedures based on condition
+    procedures = [
+        "Vital signs measurement",
+        "Physical examination",
+        "Blood test",
+        "X-ray examination",
+        "ECG monitoring"
+    ]
+    
+    return {
+        'id': str(uuid.uuid4()),
+        'status': 'finished',
+        'type': [{'coding': [{'display': 'Emergency visit'}]}],
+        'priority': {'coding': [{'display': 'Urgent'}]},
+        'subject': {'reference': f'Patient/{patient_id}'},
+        'serviceType': {'coding': [{'display': 'Emergency Medicine'}]},
+        'period': {'start': current_time},
+        'diagnosis': [{'condition': {'display': 'Acute condition'}}],
+        'reasonCode': [{'coding': [{'display': 'Emergency presentation'}]}],
+        'procedure': [{'display': random.choice(procedures)}]
+    }
+
+# Add thread pool for parallel patient generation
+patient_generator_pool = ThreadPoolExecutor(max_workers=8)
+
+def generate_random_patient(llm_model=None):
     """Generate a patient at a random house with FHIR resources."""
     random_house = random.choice(houses)
     
     try:
-        # Generate GUID first
-        patient_guid = str(uuid.uuid4())
-        print(f"Generated GUID: {patient_guid}")
+        # Generate FHIR resources first
+        fhir_resources = generate_fhir_resources()  # This should contain patient demographics
+        patient_id = fhir_resources['patient'].get('id', f"pat-{random.randint(1000, 9999)}")
+        patient_name = (
+            f"{fhir_resources['patient'].get('name', [{}])[0].get('given', ['Patient'])[0]} "
+            f"{fhir_resources['patient'].get('name', [{}])[0].get('family', str(patient_id[-4:]))}"
+        )
         
-        # Generate FHIR resources with GUID
-        fhir_resources = generate_fhir_resources(patient_guid)
-        
-        patient_resource = fhir_resources['entry'][0]['resource']
-        condition_resource = fhir_resources['entry'][1]['resource']
-        
-        # Use the same GUID as patient ID
-        patient_id = patient_guid
-        print(f"Patient ID: {patient_id}")
-        
-        # Get DOB from patient resource
-        dob = patient_resource.get('dob')
-        print(f"DOB: {dob}")  # Debug print
-        
-        # Get name
-        print("Getting patient name...")
-        name_parts = patient_resource.get('name', {})
-        if isinstance(name_parts, list):
-            name_parts = name_parts[0] if name_parts else {}
-        
-        given_name = ''
-        if isinstance(name_parts.get('given'), list):
-            given_name = name_parts['given'][0] if name_parts.get('given') else ''
+        if USE_LLM:
+            logging.info("Generating condition with LLM...")
+            request_counter.increment_requests()
+            condition_fhir = generate_condition(patient_id, llm_model=llm_model)
+            request_counter.increment_completed()
+            condition = Condition.from_fhir(condition_fhir) if condition_fhir else generate_fallback_condition()
         else:
-            given_name = name_parts.get('given', '')
-            
-        family_name = name_parts.get('family', '')
-        if isinstance(family_name, list):
-            family_name = family_name[0] if family_name else ''
-            
-        full_name = f"{given_name} {family_name}".strip()
-        if not full_name:
-            full_name = "Unknown Patient"
-        print(f"Full name: {full_name}")
-        
-        # Get condition details with debug output
-        print("Getting condition details...")
-        condition = None
-        condition_severity = None
-        condition_note = None
-        
-        # First try conditions array
-        if 'conditions' in condition_resource:
-            conditions = condition_resource['conditions']
-            if isinstance(conditions, list) and conditions:
-                first_condition = conditions[0]
-                if isinstance(first_condition, dict):
-                    condition = (
-                        first_condition.get('display') or 
-                        first_condition.get('description') or
-                        first_condition.get('code', {}).get('display') or
-                        first_condition.get('code', {}).get('code')
-                    )
-                    if 'severity' in first_condition:
-                        severity = first_condition['severity']
-                        if isinstance(severity, dict):
-                            condition_severity = severity.get('display') or severity.get('code')
-                    condition_note = first_condition.get('note')
-        
-        # Then try single code
-        elif 'code' in condition_resource:
-            code = condition_resource['code']
-            if isinstance(code, list) and code:
-                code = code[0]
-            if isinstance(code, dict):
-                condition = (
-                    code.get('display') or 
-                    code.get('description') or
-                    code.get('code')
-                )
-            
-            if 'severity' in condition_resource:
-                severity = condition_resource['severity']
-                if isinstance(severity, dict):
-                    condition_severity = severity.get('display') or severity.get('code')
-            
-            if 'notes' in condition_resource:
-                if isinstance(condition_resource['notes'], dict):
-                    condition_note = condition_resource['notes'].get('value')
-                elif isinstance(condition_resource['notes'], str):
-                    condition_note = condition_resource['notes']
-        
-        if not condition:
-            condition = "Emergency Condition"
-            
-        # Print condition details
-        print(f"Condition: {condition}")
-        if condition_severity:
-            print(f"Severity: {condition_severity}")
-        if condition_note:
-            print(f"Note: {condition_note[:100]}..." if len(condition_note) > 100 else f"Note: {condition_note}")
-        
-        # Create patient object with new properties
+            logging.info("Generating basic condition without LLM...")
+            condition = generate_fallback_condition()
+
+        # Update the patient creation to handle missing birthDate
+        dob = fhir_resources['patient'].get('birthDate', 'Unknown')  # Default to 'Unknown' if birthDate is not present
+
+        # Create patient object with Synthea data
         patient = Patient(
             id=patient_id,
-            name=full_name,
+            name=patient_name,
             condition=condition,
-            condition_severity=condition_severity,
-            dob=dob,  # Now dob is defined
-            condition_note=condition_note,
+            dob=dob,  # Use the updated dob variable
             fhir_resources=fhir_resources
         )
         
         patients.append(patient)
         random_house.add_patient(patient.id)
         
-        # Enhanced log message with severity
+        # Update log message to include Synthea details
         log_parts = [
-            f"New patient - ID: {patient_id}",
-            f"Name: {full_name}",
-            f"Condition: {condition}"
+            f"Auto Patient Generated:",
+            f"ID: {patient_id}",
+            f"Name: {patient_name}",
+            f"DOB: {patient.dob}",
+            f"Condition: {condition.code.get('display', 'Unknown')}",
+            f"Severity: {condition.severity.get('display', 'Unknown')}",
+            f"Clinical Status: {condition.clinical_status.get('display', 'Unknown')}"
         ]
         
-        if condition_severity:
-            log_parts.append(f"Severity: {condition_severity}")
-        if dob:
-            log_parts.append(f"DOB: {dob}")
-        if condition_note:
-            note_preview = condition_note[:100] + "..." if len(condition_note) > 100 else condition_note
-            log_parts.append(f"Note: {note_preview}")
-        
+        if condition.note:
+            log_parts.append(f"Notes: {condition.note}")
+            
         log_event(" | ".join(log_parts), event_type='patient')
         socketio.emit('update_state', get_state())
         return patient
         
     except Exception as e:
-        import traceback
-        print(f"Detailed error in generate_random_patient: {str(e)}")
-        print("Traceback:")
-        print(traceback.format_exc())
-        
-        # Fallback generation
-        patient_id = f"pat-{random.randint(1000, 9999)}"
-        full_name = "Unknown Patient"
-        condition = "Emergency Condition"
-        
-        patient = Patient(
-            id=patient_id,
-            name=full_name,
-            condition=condition,
-            fhir_resources={}
-        )
-        patients.append(patient)
-        random_house.add_patient(patient.id)
-        
-        log_message = (
-            f"New patient (fallback) - "
-            f"ID: {patient_id}, "
-            f"Name: {full_name}, "
-            f"Condition: {condition}"
-        )
-        log_event(log_message, event_type='patient')
-        socketio.emit('update_state', get_state())
-        return patient
+        logging.error(f"Error in generate_random_patient: {str(e)}")
+        return generate_fallback_patient(random_house)
 
 def move_ambulances():
     """Move ambulances to pick up patients and take them to the nearest hospital."""
@@ -315,9 +393,9 @@ def move_ambulances():
                         closest_ambulance.state = 'red'  # Heading to pick up a patient
                         house.ambulance_on_the_way = True
                         closest_ambulance.patient = patient
-                        log_event(f"Ambulance {closest_ambulance.id} is heading to House {house.id} to pick up Patient {patient.id}", event_type='ambulance')
+                        log_event(f"Ambulance {closest_ambulance.id} is heading to House {house.id} to pick up {patient.name}", event_type='ambulance')
                     else:
-                        log_event(f"No patient found with ID {house.patient_ids[0]} at House {house.id}", event_type='ambulance')
+                        log_event(f"No patient found at House {house.id}", event_type='ambulance')
 
         for ambulance in ambulances:
             if ambulance.target:
@@ -352,20 +430,17 @@ def move_ambulances():
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
                         ambulance.target = (nearest_hospital.x, nearest_hospital.y)
                         ambulance.state = 'yellow'  # Has patient, heading to hospital
-                        log_event(f"Ambulance {ambulance.id} picked up Patient {ambulance.patient.id} from House {patient_house.id} and is heading to Hospital {nearest_hospital.id}", event_type='ambulance')
+                        log_event(f"Ambulance {ambulance.id} picked up {ambulance.patient.name} from House {patient_house.id} and is heading to Hospital {nearest_hospital.id}", event_type='ambulance')
                     elif ambulance.x == ambulance.target[0] and ambulance.y == ambulance.target[1]:
-                        # If ambulance reached the hospital, append patient object to that hospital's array
+                        # If ambulance reached the hospital
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
-                        patient = next((p for p in patients if p.id == ambulance.patient.id), None)  # Find the patient object
+                        patient = next((p for p in patients if p.id == ambulance.patient.id), None)
                         if patient:
                             nearest_hospital.add_patient_to_waiting(patient)
-                            log_event(f"Patient {ambulance.patient.id} arrived at Hospital {nearest_hospital.id}", event_type='hospital')
-                            # Add new hospital event for patient arrival
-                            log_event(f"Patient {patient.id} has arrived at Hospital {nearest_hospital.id} and entered waiting queue", event_type='hospital')
                         ambulance.is_available = True
-                        ambulance.state = 'green'  # Free to pick up another patient
+                        ambulance.state = 'green'
                         ambulance.target = None
-                        ambulance.patient = None  # Clear the patient object
+                        ambulance.patient = None
 
         socketio.emit('update_state', get_state())
         time.sleep(0.05)  # Reduce the sleep time to make the simulation feel faster
@@ -394,43 +469,198 @@ def get_state():
                 'id': h.id,
                 'x': h.x,
                 'y': h.y,
-                'waiting': [{'id': p.id, 'name': p.name, 'condition': p.condition, 'wait_time': p.wait_time} for p in h.waiting],
-                'treating': [{'id': p.id, 'name': p.name, 'condition': p.condition, 'wait_time': p.wait_time} for p in h.treating],
-                'discharged': [{'id': p.id, 'name': p.name, 'condition': p.condition, 'wait_time': p.wait_time} for p in h.discharged]
+                'waiting': [{
+                    'id': p.id,
+                    'name': p.name,
+                    'condition': p.condition.to_dict() if p.condition else None,  # Convert Condition to dict
+                    'wait_time': p.wait_time
+                } for p in h.waiting],
+                'treating': [{
+                    'id': p.id,
+                    'name': p.name,
+                    'condition': p.condition.to_dict() if p.condition else None,  # Convert Condition to dict
+                    'wait_time': p.wait_time
+                } for p in h.treating],
+                'discharged': [{
+                    'id': p.id,
+                    'name': p.name,
+                    'condition': p.condition.to_dict() if p.condition else None,  # Convert Condition to dict
+                    'wait_time': p.wait_time
+                } for p in h.discharged]
             } for h in hospitals
         ]
     }
 
+def validate_encounter_data(encounter):
+    """Validate the encounter data structure and ensure required fields exist."""
+    required_structure = {
+        'type': [{'coding': [{'display': 'Unknown'}]}],
+        'status': 'Unknown',
+        'priority': {'coding': [{'display': 'Unknown'}]},
+        'serviceType': {'coding': [{'display': 'Unknown'}]},
+        'diagnosis': [{'condition': {'display': 'Unknown'}}],
+        'reasonCode': [{'coding': [{'display': 'Unknown'}]}],
+        'procedure': [{'display': 'Unknown'}]
+    }
+    
+    # If encounter is None, return default structure
+    if not encounter:
+        logging.warning("Received null encounter data, using default structure")
+        return required_structure
+    
+    # Ensure all required fields exist with proper structure
+    validated = {}
+    try:
+        validated['type'] = encounter.get('type', required_structure['type'])
+        validated['status'] = encounter.get('status', required_structure['status'])
+        validated['priority'] = encounter.get('priority', required_structure['priority'])
+        validated['serviceType'] = encounter.get('serviceType', required_structure['serviceType'])
+        validated['diagnosis'] = encounter.get('diagnosis', required_structure['diagnosis'])
+        validated['reasonCode'] = encounter.get('reasonCode', required_structure['reasonCode'])
+        validated['procedure'] = encounter.get('procedure', required_structure['procedure'])
+        
+        # Copy any additional fields that might exist
+        for key in encounter:
+            if key not in validated:
+                validated[key] = encounter[key]
+                
+        return validated
+        
+    except Exception as e:
+        logging.error(f"Error validating encounter data: {str(e)}")
+        logging.debug(f"Raw encounter data: {encounter}")
+        return required_structure
+
+class RequestCounter:
+    def __init__(self):
+        self.requests_made = 0
+        self.requests_completed = 0
+        self.lock = Lock()
+    
+    def increment_requests(self):
+        with self.lock:
+            self.requests_made += 1
+            self.emit_counts()
+    
+    def increment_completed(self):
+        with self.lock:
+            self.requests_completed += 1
+            self.emit_counts()
+    
+    def emit_counts(self):
+        socketio.emit('update_request_counts', {
+            'requests_made': self.requests_made,
+            'requests_completed': self.requests_completed
+        })
+
+request_counter = RequestCounter()
+
+# Modify process_patient_encounter to track requests
+def process_patient_encounter(hospital, patient):
+    """Process a single patient encounter."""
+    try:
+        if USE_LLM:
+            # Existing LLM-based encounter generation
+            request_counter.increment_requests()
+            encounter = generate_encounter(
+                patient_id=patient.id,
+                condition_id=patient.condition.id,
+                practitioner_id=f"pract-{str(uuid.uuid4())[:8]}", 
+                organization_id=f"org-{hospital.id}",
+                condition_description=f"Patient presents with {patient.condition.code.get('display', 'Unknown condition')}",
+                llm_model=DEFAULT_LLM_MODEL
+            )
+            request_counter.increment_completed()
+        else:
+            # Generate basic encounter without LLM
+            encounter = generate_fallback_encounter(
+                patient_id=patient.id,
+                condition_id=patient.condition.id,
+                hospital_id=hospital.id
+            )
+            
+        encounter = validate_encounter_data(encounter)
+        patient.encounters.append(encounter)
+        
+        # Create summary from encounter data
+        diagnosis = encounter['diagnosis'][0]['condition']['display']
+        procedure = encounter['procedure'][0]['display']
+        encounter_type = encounter['type'][0]['coding'][0]['display']
+        
+        summary = (
+            f"Encounter documented for {patient.name}: "
+            f"Diagnosed with {diagnosis}, "
+            f"Procedure performed: {procedure}, "
+            f"Visit type: {encounter_type}"
+        )
+        log_event(summary, event_type='hospital')
+            
+    except Exception as e:
+        logging.error(f"Error processing encounter for {patient.name}: {str(e)}")
+        log_event(f"Error documenting encounter for {patient.name}", event_type='hospital')
+
 def manage_hospital_queues():
     """Manage the movement of patients between hospital queues."""
-    hospital_lock = Lock()
-
+    hospital_locks = {hospital.id: Lock() for hospital in hospitals}  # Individual locks per hospital
+    
     while True:
         for hospital in hospitals:
-            with hospital_lock:
-                # Update wait times for patients in the waiting queue
+            with hospital_locks[hospital.id]:
+                # Process waiting patients
                 if hospital.waiting:
-                    patient = hospital.waiting[0]
+                    for patient in hospital.waiting:
+                        patient.wait_time += 1
+                        
+                        if patient.wait_time >= WAITING_TIME and len(hospital.treating) < GLOBAL_MAX_PATIENTS_PER_HOSPITAL:
+                            moved_patient = hospital.move_patient_to_treating()
+                            if moved_patient:
+                                # Use ThreadPoolExecutor to process encounters concurrently
+                                patient_generator_pool.submit(process_patient_encounter, hospital, moved_patient)
+
+                # Process treating patients
+                for patient in list(hospital.treating):
                     patient.wait_time += 1
-
-                    # Move patient to treating if wait time exceeds WAITING_TIME and there's space
-                    if patient.wait_time >= WAITING_TIME and len(hospital.treating) < MAX_TREATING:
-                        moved_patient = hospital.move_patient_to_treating()
-                        if moved_patient:
-                            log_event(f"Patient {moved_patient.id} moved to treating at Hospital {hospital.id}", event_type='hospital')
-
-                # Update wait times for patients in the treating queue
-                for patient in hospital.treating:
-                    patient.wait_time += 1
-
-                    # Discharge patient if wait time exceeds TREATING_TIME
                     if patient.wait_time >= TREATING_TIME:
                         discharged_patient = hospital.discharge_patient()
                         if discharged_patient:
-                            log_event(f"Patient {discharged_patient.id} discharged from Hospital {hospital.id}", event_type='hospital')
+                            # Process discharge in thread pool as well
+                            patient_generator_pool.submit(
+                                generate_discharge_for_patient, 
+                                hospital, 
+                                discharged_patient
+                            )
 
         socketio.emit('update_state', get_state())
         time.sleep(1)
+
+# Add this helper function
+def generate_discharge_for_patient(hospital, patient):
+    """Process discharge for a single patient"""
+    try:
+        if patient.encounters:
+            original_encounter = patient.encounters[-1]
+            start_time = original_encounter['period']['start']
+            end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            discharge = generate_discharge(
+                encounter_id=original_encounter['id'],
+                start_time=start_time,
+                end_time=end_time
+            )
+            
+            patient.encounters.append(discharge)
+            
+            # Add discharge event logging
+            discharge_summary = (
+                f"{patient.name} discharged from Hospital {hospital.id} | "
+                f"Condition: {patient.condition.code.get('display', 'Unknown')} | "
+                f"Total time in hospital: {patient.wait_time} seconds"
+            )
+            log_event(discharge_summary, event_type='hospital')
+            
+    except Exception as e:
+        logging.error(f"Error generating discharge: {str(e)}")
+        log_event(f"Error processing discharge for {patient.name}", event_type='hospital')
 
 def log_hospital_event(message):
     """Log events specific to hospital operations."""
@@ -459,24 +689,49 @@ def handle_create_patient_at_house(data):
     house_id = data['house_id']
     house = next((h for h in houses if h.id == house_id), None)
 
-    if house and not house.patient_ids:  # Only create patient if the house has no patients
-        patient_id = random.randint(1000, 9999)  # Assign unique patient ID
-        condition = "Unknown Condition"  # Default condition
-        name = f"{patient_id}"  # Remove "Patient" prefix from name
-        patient = Patient(patient_id, name, condition)
+    if house and not house.patient_ids:
+        # Generate a fallback condition for the patient
+        condition = generate_fallback_condition()  # Use the fallback condition generation
+
+        # Generate a fallback patient
+        fallback_patient = generate_fallback_patient()
+        patient_id = fallback_patient['patient']['id']  # Get ID from fallback patient
+        patient_name = fallback_patient['patient']['name'][0]['given'][0]  # Get name from fallback patient
+
+        patient = Patient(
+            id=patient_id,
+            name=patient_name,
+            condition=condition,
+            dob=fallback_patient['patient'].get('birthDate', 'Unknown'),  # Get DOB from FHIR resources
+            condition_note=condition.note,  # Use the note from the condition
+            fhir_resources=fallback_patient  # No FHIR resources for fallback
+        )
+
         patients.append(patient)  # Add the patient to the global list
-        house.add_patient(patient.id)
-        log_event(f"Patient {patient.id} with condition {patient.condition} is at House {house.id}", event_type='patient')
+        house.add_patient(patient.id)  # Add the patient ID to the house
+        log_parts = [
+            f"Manual Patient Generated:",
+            f"ID: {patient_id}",
+            f"Name: {patient_name}",
+            f"DOB: {patient.dob}",
+            f"Condition: {condition.code.get('display', 'Unknown')}",
+            f"Severity: {condition.severity.get('display', 'Unknown')}",
+            f"Clinical Status: {condition.clinical_status.get('display', 'Unknown')}"
+        ]
+        
+        if condition.note:
+            log_parts.append(f"Notes: {condition.note}")
+        log_event(" | ".join(log_parts), event_type='patient')  # Log the formatted message
         socketio.emit('update_state', get_state())
 
-def generate_patients_automatically():
+def generate_patients_automatically(llm_model=None):
     """Automatically generate patients at random intervals."""
     while True:
-        generate_random_patient()
-        time.sleep(random.randint(1, 5))  # Random interval between 1 to 5 seconds
+        generate_random_patient(llm_model)
+        time.sleep(random.randint(PATIENT_GENERATION_LOWER_BOUND, PATIENT_GENERATION_UPPER_BOUND))  # Random interval between 1 to 5 seconds
 
 # Start background threads for simulation
-Thread(target=generate_patients_automatically).start()
+Thread(target=lambda: generate_patients_automatically(DEFAULT_LLM_MODEL)).start()
 Thread(target=move_ambulances).start()
 Thread(target=manage_hospital_queues).start()
 
@@ -509,4 +764,26 @@ def handle_reset_simulation():
     reset_simulation()
 
 if __name__ == '__main__':
+    parser = ArgumentParser(description='Run the ambulance simulation')
+    parser.add_argument('--llm-model', type=str, default=DEFAULT_LLM_MODEL,
+                       help=f'LLM model to use (default: {DEFAULT_LLM_MODEL})')
+    parser.add_argument('--no-llm', action='store_true',
+                       help='Run simulation without LLM integration')
+    
+    args = parser.parse_args()
+    
+    # Update global USE_LLM flag
+    USE_LLM = not args.no_llm
+    
+    if USE_LLM:
+        logging.info(f"Running simulation with LLM")
+    
+    # Register shutdown handler for thread pool
+    atexit.register(lambda: patient_generator_pool.shutdown(wait=True))
+    
+    # Start background threads with specified model
+    Thread(target=lambda: generate_patients_automatically(args.llm_model)).start()
+    Thread(target=move_ambulances).start()
+    Thread(target=manage_hospital_queues).start()
+    
     socketio.run(app)
