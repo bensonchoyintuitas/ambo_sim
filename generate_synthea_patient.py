@@ -50,7 +50,7 @@ def generate_fallback_patient(session_dir=None):
     # If session_dir is provided, save the FHIR resource
     if session_dir:
         try:
-            patient_dir = os.path.join(session_dir, 'fhir', 'patient')
+            patient_dir = os.path.join(session_dir, 'patient')
             os.makedirs(patient_dir, exist_ok=True)
             
             filename = f"Patient_{patient_id}.json"

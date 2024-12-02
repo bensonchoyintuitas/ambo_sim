@@ -264,7 +264,7 @@ def generate_fallback_condition():
     chosen_condition = random.choice(conditions)
     chosen_severity = random.choice(severities)
     
-    return Condition(
+    condition = Condition(
         id=str(uuid.uuid4()),
         clinical_status={
             "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
@@ -288,6 +288,42 @@ def generate_fallback_condition():
         recorded_date=current_time,
         note=f"Patient presents with {chosen_condition['display']}"
     )
+
+    # Add this block to save the condition to file
+    if OUTPUT_FHIR and SESSION_DIR:
+        try:
+            # Convert condition to FHIR format dictionary
+            condition_fhir = {
+                "resourceType": "Condition",
+                "id": condition.id,
+                "clinicalStatus": {
+                    "coding": [condition.clinical_status]
+                },
+                "verificationStatus": {
+                    "coding": [condition.verification_status]
+                },
+                "severity": {
+                    "coding": [condition.severity]
+                },
+                "category": [{
+                    "coding": [condition.category]
+                }],
+                "code": {
+                    "coding": [condition.code]
+                },
+                "subject": {
+                    "reference": condition.subject_reference
+                },
+                "onsetDateTime": condition.onset_datetime,
+                "recordedDate": condition.recorded_date,
+                "note": [{"text": condition.note}]
+            }
+            save_fhir_resource('Condition', condition_fhir)
+            logging.info(f"Saved condition FHIR resource for condition {condition.id}")
+        except Exception as e:
+            logging.error(f"Error saving condition FHIR resource: {str(e)}")
+    
+    return condition
 
 def generate_fallback_encounter(patient_id, condition_id, hospital_id):
     """Generate a basic encounter without using LLM."""
@@ -778,7 +814,8 @@ def initialize_fhir_session():
         session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         SESSION_DIR = os.path.join(FHIR_OUTPUT_DIR, f"session_{session_timestamp}")
         os.makedirs(SESSION_DIR, exist_ok=True)
-        os.makedirs(os.path.join(SESSION_DIR, 'fhir'), exist_ok=True)
+        # Remove this line that creates the 'fhir' subdirectory
+        # os.makedirs(os.path.join(SESSION_DIR, 'fhir'), exist_ok=True)
         
         logging.info(f"Initialized FHIR output session at {SESSION_DIR}")
     except Exception as e:
