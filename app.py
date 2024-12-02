@@ -748,40 +748,63 @@ def handle_create_patient_at_house(data):
     house = next((h for h in houses if h.id == house_id), None)
 
     if house and not house.patient_ids:
-        # Generate a fallback condition for the patient
-        condition = generate_fallback_condition()  # Use the fallback condition generation
+        try:
+            # Generate a fallback patient with FHIR resources
+            fallback_patient = generate_fallback_patient(SESSION_DIR)
+            patient_resource = fallback_patient['patient']
+            
+            # Generate condition using LLM if enabled, otherwise use basic condition
+            if USE_LLM:
+                condition = generate_condition(
+                    patient_id=patient_resource['id'],
+                    llm_model=DEFAULT_LLM_MODEL
+                )
+            else:
+                # Create a basic condition if no LLM
+                condition = Condition(
+                    id=str(uuid.uuid4()),
+                    clinical_status={'code': 'active', 'display': 'Active'},
+                    verification_status={'code': 'confirmed', 'display': 'Confirmed'},
+                    severity={'code': 'moderate', 'display': 'Moderate'},
+                    category={'code': 'problem-list-item', 'display': 'Problem List Item'},
+                    code={'code': 'generic', 'display': 'Generic Condition'},
+                    subject_reference=f"Patient/{patient_resource['id']}",
+                    onset_datetime=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    recorded_date=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    note="Basic fallback condition"
+                )
 
-        # Generate a fallback patient
-        output_dir = "output_fhir/session_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-        fallback_patient = generate_fallback_patient(output_dir)
-        patient_id = fallback_patient['patient']['id']  # Get ID from fallback patient
-        patient_name = fallback_patient['patient']['name'][0]['given'][0]  # Get name from fallback patient
+            # Create the patient object
+            patient = Patient(
+                id=patient_resource['id'],
+                name=patient_resource['name'][0]['given'][0],
+                condition=condition,
+                dob=patient_resource.get('birthDate', 'Unknown'),
+                condition_note=condition.note if condition else None,
+                fhir_resources=fallback_patient
+            )
 
-        patient = Patient(
-            id=patient_id,
-            name=patient_name,
-            condition=condition,
-            dob=fallback_patient['patient'].get('birthDate', 'Unknown'),  # Get DOB from FHIR resources
-            condition_note=condition.note,  # Use the note from the condition
-            fhir_resources=fallback_patient  # No FHIR resources for fallback
-        )
+            patients.append(patient)
+            house.add_patient(patient.id)
 
-        patients.append(patient)  # Add the patient to the global list
-        house.add_patient(patient.id)  # Add the patient ID to the house
-        log_parts = [
-            f"Manual Patient Generated:",
-            f"ID: {patient_id}",
-            f"Name: {patient_name}",
-            f"DOB: {patient.dob}",
-            f"Condition: {condition.code.get('display', 'Unknown')}",
-            f"Severity: {condition.severity.get('display', 'Unknown')}",
-            f"Clinical Status: {condition.clinical_status.get('display', 'Unknown')}"
-        ]
-        
-        if condition.note:
-            log_parts.append(f"Notes: {condition.note}")
-        log_event(" | ".join(log_parts), event_type='patient')  # Log the formatted message
-        socketio.emit('update_state', get_state())
+            # Log the patient creation
+            log_parts = [
+                f"Manual Patient Generated:",
+                f"ID: {patient.id}",
+                f"Name: {patient.name}",
+                f"DOB: {patient.dob}",
+                f"Condition: {condition.code.get('display', 'Unknown')}",
+                f"Severity: {condition.severity.get('display', 'Unknown')}",
+                f"Clinical Status: {condition.clinical_status.get('display', 'Unknown')}"
+            ]
+            
+            if condition.note:
+                log_parts.append(f"Notes: {condition.note}")
+            log_event(" | ".join(log_parts), event_type='patient')
+            socketio.emit('update_state', get_state())
+            
+        except Exception as e:
+            logging.error(f"Error creating patient at house: {str(e)}")
 
 def generate_patients_automatically(llm_model=None):
     """Automatically generate patients at random intervals."""

@@ -199,6 +199,7 @@ The system generates two distinct types of encounter messages that should be han
 - [ ] validate consistent fhir format for both LLM and NO LLM, and with and without synthea
 - [ ] validate consistent fhir format using fallback when using clickable patient
 - [ ] conform to synthea as base template for fallback
+- [ ] refactor to DRY all fallbacks (clickable, automated)
 
 
 
