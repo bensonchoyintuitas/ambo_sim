@@ -98,12 +98,13 @@ The LLM models trade off between speed and quality of generated content. The lla
 
 ## Data Flow and Components
 
-### Patient Generation
+### Patient Generation 
    - The simulation has three levels of patient generation - each with different levels of speed and richness:
     1. Random bare minimuum patient and condition (from small list) 
     2. Synthea API to generate base patient demographics and medical history
-    3. Synthea API + LLM to generate more comprehensiveFHIR resources
+    3. Synthea API + LLM to generate more comprehensive FHIR resources
    - Each generated patient serves as a "seed" for further simulation
+   - See [PATIENT-SCHEMA.md](PATIENT-SCHEMA.md) for detailed patient schema documentation
 
 ## LLM Enhancement (optional)
    - The LLM (either Llama 3.1 8B or Gemma 2B) processes Synthea patient data using a template prompt that:
