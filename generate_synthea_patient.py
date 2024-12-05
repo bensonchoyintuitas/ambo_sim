@@ -31,10 +31,19 @@ api_call_lock = Lock()
 
 def generate_fallback_patient(session_dir=None):
     """Generate a basic patient with minimal FHIR resources."""
-    # Generate basic patient data
-    patient_id = f"pat-{random.randint(1000, 9999)}"
-    given_name = random.choice(['John', 'Jane', 'Bob', 'Alice', 'Charlie'])
-    family_name = random.choice(['Smith', 'Johnson', 'Williams', 'Brown', 'Jones'])
+    # Generate patient ID first to use its number for name suffixes
+    patient_number = random.randint(1000, 9999)
+    patient_id = f"pat-{patient_number}"
+    
+    # Expanded list of given names and family names
+    given_names = ['John', 'Jane', 'Bob', 'Alice', 'Charlie', 'Emily', 'Michael', 'Sarah', 'David', 'Laura', 
+                   'Chris', 'Jessica', 'Daniel', 'Emma', 'James', 'Olivia', 'Matthew', 'Sophia', 'Andrew', 'Isabella']
+    family_names = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez',
+                    'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin']
+    
+    # Use the patient number as suffix for both names
+    given_name = random.choice(given_names) + str(patient_number)
+    family_name = random.choice(family_names) + str(patient_number)
     
     # Create FHIR patient resource
     fhir_patient = {
@@ -70,7 +79,10 @@ def generate_fallback_patient(session_dir=None):
 def generate_fhir_resources(session_dir=None):
     """Thread-safe function to generate FHIR resources using Synthea API."""
     session = create_session()
-    output_dir = session_dir or f"output_fhir/session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    # Only create output_dir if session_dir is provided
+    output_dir = session_dir if session_dir else None
+    
     try:
         with api_call_lock:
             logging.info(f"Calling Synthea API with session_dir: {session_dir}")
@@ -92,8 +104,6 @@ def generate_fhir_resources(session_dir=None):
                     logging.info(f"Successfully saved patient {patient_id} to {filepath}")
                 except Exception as e:
                     logging.error(f"Error saving FHIR patient resource: {str(e)}")
-            else:
-                logging.warning("No session_dir provided, skipping patient file save")
             
             return patient_data
     except requests.exceptions.RequestException as e:
