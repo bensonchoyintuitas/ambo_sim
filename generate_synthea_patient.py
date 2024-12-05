@@ -35,14 +35,21 @@ def generate_fallback_patient(session_dir=None):
     patient_number = random.randint(1000, 9999)
     patient_id = f"pat-{patient_number}"
     
-    # Expanded list of given names and family names
-    given_names = ['John', 'Jane', 'Bob', 'Alice', 'Charlie', 'Emily', 'Michael', 'Sarah', 'David', 'Laura', 
-                   'Chris', 'Jessica', 'Daniel', 'Emma', 'James', 'Olivia', 'Matthew', 'Sophia', 'Andrew', 'Isabella']
+    # Separate lists for male and female given names
+    male_given_names = ['John', 'Bob', 'Charlie', 'Michael', 'David', 'Chris', 'Daniel', 'James', 'Matthew', 'Andrew']
+    female_given_names = ['Jane', 'Alice', 'Emily', 'Sarah', 'Laura', 'Jessica', 'Emma', 'Olivia', 'Sophia', 'Isabella']
     family_names = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez',
                     'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin']
     
-    # Use the patient number as suffix for both names
-    given_name = random.choice(given_names) + str(patient_number)
+    # Randomly select gender
+    gender = random.choice(['male', 'female'])
+    
+    # Choose given name based on gender
+    if gender == 'male':
+        given_name = random.choice(male_given_names) + str(patient_number)
+    else:
+        given_name = random.choice(female_given_names) + str(patient_number)
+    
     family_name = random.choice(family_names) + str(patient_number)
     
     # Create FHIR patient resource
@@ -53,7 +60,14 @@ def generate_fallback_patient(session_dir=None):
             'given': [given_name],
             'family': family_name
         }],
-        'birthDate': '1970-01-01'  # Default birthdate
+        'birthDate': '1970-01-01',  # Default birthdate
+        'gender': gender,  # Add gender element
+        'identifier': [  # Add identifier element
+            {
+                'system': 'ambosim/fallback',
+                'value': patient_id
+            }
+        ]
     }
     
     # If session_dir is provided, save the FHIR resource

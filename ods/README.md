@@ -3,6 +3,10 @@
 This is as a stub to rapidly test ods concepts, and should shift to a separate repo
 This directory contains patient data in various formats and the tools to process them.
 
+## To improve
+- Make a persistent output file (parquet) with schema evolution
+- Make a persistent loading mechanism to load the json straight into the persistent store
+
 ## Schema Documentation
 
 For detailed information about the patient data schemas used in this system, see [SCHEMA.md](SCHEMA.md).

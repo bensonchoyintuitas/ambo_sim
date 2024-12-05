@@ -195,7 +195,7 @@ The system generates two distinct types of encounter messages that should be han
 # fhir_output - Output all FHIR resources to files
 - [x] for no-llm no-synthea
 - [x] for synthea
-- [ ] make ambulance flip
+- [x] make ambulance flip
 - [ ] for llm
 - [ ] for clickable patient
 - [ ] validate consistent fhir format for both LLM and NO LLM, and with and without synthea
@@ -203,6 +203,8 @@ The system generates two distinct types of encounter messages that should be han
 - [ ] conform to synthea as base template for fallback
 - [ ] refactor to DRY all fallbacks (clickable, automated)
 
+# ods
+- [x] See [ODS README](ods/README.md) for details on operational data store
 
 
 # kafka_output
