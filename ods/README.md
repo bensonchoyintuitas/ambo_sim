@@ -9,7 +9,7 @@ This directory contains patient data in various formats and the tools to process
 
 ## Schema Documentation
 
-For detailed information about the patient data schemas used in this system, see [SCHEMA.md](SCHEMA.md).
+- See [PATIENT-SCHEMA.md](PATIENT-SCHEMA.md) for detailed patient schema documentation
 
 ## Files
 

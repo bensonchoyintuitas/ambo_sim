@@ -7,16 +7,21 @@ Both schema versions share these core fields:
 ```json
 {
     "resourceType": "Patient",  // Always "Patient" per FHIR spec
-    "id": "string",            // Unique identifier
+    "id": "string",            // Unique identifier (e.g., "pat-1234")
     "name": [{
-        "given": ["string"],   // Given/first names as array
-        "family": "string"     // Family/last name
+        "given": ["string"],   // Given/first names as array (e.g., "John1234")
+        "family": "string"     // Family/last name (e.g., "Smith1234")
     }],
-    "birthDate": "YYYY-MM-DD"  // Date of birth in ISO format
+    "birthDate": "YYYY-MM-DD", // Date of birth in ISO format
+    "gender": "male|female",   // Patient's gender
+    "identifier": [{           // Additional identifiers
+        "system": "string",    // Identifier system (e.g., "ambosim/fallback")
+        "value": "string"      // Identifier value (same as id)
+    }]
 }
 ```
 
-## Full FHIR Patient Schema (Version 2)
+## Full FHIR Patient Schema (Synthea) 
 Example: `patient_6462bf29-68f3-36ca-2f78-ff1ce05d1484.json`
 
 A comprehensive FHIR Patient resource with complete demographic information: 
@@ -93,21 +98,24 @@ A comprehensive FHIR Patient resource with complete demographic information:
 }
 ```
 
-# Minimal Patient Schema (Version 1)
+## Minimal Patient Schema (Non-synthea / fallback)
 Example: `patient_pat-2731.json`
 
 A simplified patient schema with basic demographic information:
 
 ```json
 {
-    "resourceType": "Patient",
-    "id": "string",
+    "resourceType": "Patient",  // Always "Patient" per FHIR spec
+    "id": "string",            // Unique identifier with "pat-" prefix (e.g., "pat-9791")
     "name": [{
-        "given": ["string"],
-        "family": "string"
+        "given": ["string"],   // Given name with ID suffix (e.g., "James9791")
+        "family": "string"     // Family name with ID suffix (e.g., "Garcia9791")
     }],
-    "birthDate": "YYYY-MM-DD"
+    "birthDate": "YYYY-MM-DD", // Date of birth in ISO format
+    "gender": "male|female",   // Patient's gender
+    "identifier": [{
+        "system": "ambosim/fallback", // Fixed identifier system for minimal schema
+        "value": "string"             // Same as id field (e.g., "pat-9791")
+    }]
 }
-
-
-
+```

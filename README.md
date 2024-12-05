@@ -95,6 +95,9 @@ The LLM models trade off between speed and quality of generated content. The lla
    - Patient ID is stored in ambulance's single slot during transport
    - At hospital, patient ID moves from ambulance to hospital's patient array
 
+## Schemas
+Schemas are compatible, but vary in terms of element coverage depending on NoSynthea, Synthea and LLM usage.
+- See [PATIENT-SCHEMA.md](PATIENT-SCHEMA.md) for detailed patient schema documentation
 
 ## Data Flow and Components
 
@@ -104,7 +107,6 @@ The LLM models trade off between speed and quality of generated content. The lla
     2. Synthea API to generate base patient demographics and medical history
     3. Synthea API + LLM to generate more comprehensive FHIR resources
    - Each generated patient serves as a "seed" for further simulation
-   - See [PATIENT-SCHEMA.md](PATIENT-SCHEMA.md) for detailed patient schema documentation
 
 ## LLM Enhancement (optional)
    - The LLM (either Llama 3.1 8B or Gemma 2B) processes Synthea patient data using a template prompt that:
