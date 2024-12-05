@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ambulance Simulation</title>
     <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .ambulance-icon {
+            position: absolute;
+            width: 32px;
+            height: auto;
+            transition: transform 0.3s;
+        }
+    </style>
 </head>
 <body>
     <div class="header-container">
@@ -12,19 +20,19 @@
         <button id="resetButton">Reset</button>
     </div>
     <div id="content">
-        <canvas id="simulationCanvas" width="800" height="1000"></canvas>
+        <div id="simulation-container" style="position: relative;">
+            <canvas id="simulationCanvas" width="800" height="1000"></canvas>
+            <img src="/static/ambulance.png" class="ambulance-icon" id="ambulance-template" style="display: none;">
+        </div>
         <div class="event-logs">
             <div class="event-log" id="patient-events">
                 <h3>Patient Events</h3>
-                <!-- Patient events content goes here -->
             </div>
             <div class="event-log" id="ambulance-events">
                 <h3>Ambulance Events</h3>
-                <!-- Ambulance events content goes here -->
             </div>
             <div class="event-log" id="hospital-events">
                 <h3>Hospital Events</h3>
-                <!-- Hospital events content goes here -->
             </div>
         </div>
     </div>

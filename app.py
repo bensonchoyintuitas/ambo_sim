@@ -546,7 +546,14 @@ def find_nearest_hospital(x, y):
 def get_state():
     """Returns the state of ambulances, houses, and hospitals."""
     return {
-        'ambulances': [{'id': a.id, 'x': a.x, 'y': a.y, 'state': a.state, 'patient_id': a.patient.id if a.patient else None} for a in ambulances],
+        'ambulances': [{
+            'id': a.id, 
+            'x': a.x, 
+            'y': a.y, 
+            'state': a.state, 
+            'patient_id': a.patient.id if a.patient else None,
+            'direction': 'left' if a.target and a.target[0] < a.x else 'right'
+        } for a in ambulances],
         'houses': [
             {
                 'id': h.id,
@@ -565,19 +572,19 @@ def get_state():
                 'waiting': [{
                     'id': p.id,
                     'name': p.name,
-                    'condition': p.condition.to_dict() if p.condition else None,  # Convert Condition to dict
+                    'condition': p.condition.to_dict() if p.condition else None,
                     'wait_time': p.wait_time
                 } for p in h.waiting],
                 'treating': [{
                     'id': p.id,
                     'name': p.name,
-                    'condition': p.condition.to_dict() if p.condition else None,  # Convert Condition to dict
+                    'condition': p.condition.to_dict() if p.condition else None,
                     'wait_time': p.wait_time
                 } for p in h.treating],
                 'discharged': [{
                     'id': p.id,
                     'name': p.name,
-                    'condition': p.condition.to_dict() if p.condition else None,  # Convert Condition to dict
+                    'condition': p.condition.to_dict() if p.condition else None,
                     'wait_time': p.wait_time
                 } for p in h.discharged]
             } for h in hospitals

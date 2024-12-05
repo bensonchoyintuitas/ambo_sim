@@ -119,10 +119,24 @@ function drawState(state) {
         context.fillStyle = ambulance.state;
         context.fillRect(ambulance.x, ambulance.y, AMBULANCE_SIZE, AMBULANCE_SIZE);
 
-        // Draw the emoji
-        context.fillStyle = "#ffffff";
-        context.font = EMOJI_FONT_SIZE + ' Arial';  // Larger font for emoji
-        context.fillText("🚑", ambulance.x + EMOJI_OFFSET_X, ambulance.y + EMOJI_OFFSET_Y);
+        // Get the ambulance image element
+        const ambulanceImg = document.getElementById('ambulance-template');
+        
+        // Save the current context state
+        context.save();
+        
+        // Set up the transformation
+        context.translate(ambulance.x, ambulance.y);
+        if (ambulance.target && ambulance.target[0] < ambulance.x) {
+            // Flip horizontally if moving left
+            context.scale(-1, 1);
+        }
+        
+        // Draw the ambulance image
+        context.drawImage(ambulanceImg, -16, -16, 32, 32); // Centered on ambulance position
+        
+        // Restore the context state
+        context.restore();
 
         // Draw the patient name further below the ambulance
         context.font = TEXT_FONT_SIZE + ' Arial';
