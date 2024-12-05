@@ -124,8 +124,11 @@ function drawState(state) {
         // Set up the transformation
         context.translate(ambulance.x, ambulance.y);
         
-        // Always flip (for testing)
-        context.scale(-1, 1);
+        // Default to facing left (flipped)
+        // Only face right (unflipped) when heading to hospital (yellow state)
+        if (ambulance.state !== 'yellow') {
+            context.scale(-1, 1);
+        }
         
         // Draw the ambulance image
         context.drawImage(ambulanceImg, -16, -16, 32, 32); // Centered on ambulance position
