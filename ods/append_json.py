@@ -4,6 +4,7 @@ import duckdb
 from pathlib import Path
 import argparse
 from datetime import datetime
+import os
 
 def flatten_json(nested_json, prefix=''):
     """
@@ -90,7 +91,7 @@ def log_processing(input_file, output_path, num_columns):
 
 def process_json_file(input_file, output_file, output_format='csv'):
     """
-    Process a JSON file and merge with existing output file if it exists
+    Process a single JSON file and merge with existing output file if it exists
     """
     # Read and flatten JSON
     with open(input_file, 'r') as f:
@@ -127,9 +128,31 @@ def process_json_file(input_file, output_file, output_format='csv'):
     print("\nSample of data:")
     print(result_df.head())
 
+def process_input_path(input_path, output_path, output_format='csv'):
+    """
+    Process either a single JSON file or all JSON files in a directory
+    """
+    if input_path.is_file():
+        if input_path.suffix.lower() == '.json':
+            process_json_file(input_path, output_path, output_format)
+        else:
+            print(f"Skipping non-JSON file: {input_path}")
+    elif input_path.is_dir():
+        json_files = list(input_path.glob('**/*.json'))  # Recursively find all JSON files
+        if not json_files:
+            print(f"No JSON files found in directory: {input_path}")
+            return
+        
+        print(f"Found {len(json_files)} JSON files to process")
+        for json_file in json_files:
+            print(f"\nProcessing: {json_file}")
+            process_json_file(json_file, output_path, output_format)
+    else:
+        print(f"Input path does not exist: {input_path}")
+
 def main():
     parser = argparse.ArgumentParser(description='Process JSON files and merge into CSV/Parquet')
-    parser.add_argument('input_file', help='Input JSON file')
+    parser.add_argument('input_path', help='Input JSON file or directory containing JSON files')
     parser.add_argument('--filename', required=True, help='Output file name')
     parser.add_argument('--format', choices=['csv', 'parquet'], default='csv', 
                         help='Output file format (csv or parquet)')
@@ -140,7 +163,7 @@ def main():
     script_dir = Path(__file__).parent
     
     # Input path - allow for absolute paths or paths relative to current directory
-    input_path = Path(args.input_file)
+    input_path = Path(args.input_path)
     if not input_path.is_absolute():
         input_path = script_dir / input_path
     
@@ -153,7 +176,7 @@ def main():
     if not output_path.suffix:
         output_path = output_path.with_suffix(f'.{args.format}')
     
-    process_json_file(input_path, output_path, args.format)
+    process_input_path(input_path, output_path, args.format)
 
 if __name__ == "__main__":
     main()
