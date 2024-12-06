@@ -41,9 +41,9 @@ python3 app.py --no-llm # no LLM
 python3 app.py --no-llm --output-fhir
 
  # llm choices
-python3 app.py --llm-model llama3.1:8b # better
-python3 app.py --llm-model llama3.2:1b 
-python3 app.py --llm-model gemma2:2b 
+python3 app.py --llm-model llama3.1:8b --output-fhir # better
+python3 app.py --llm-model llama3.2:1b --output-fhir # lacking the note fiel
+python3 app.py --llm-model gemma2:2b --output-fhir
 python3 app.py --llm-model gemma:2b # worse
 python3 app.py --llm-model llama2:7b 
 ```
@@ -198,7 +198,7 @@ The system generates two distinct types of encounter messages that should be han
 - [x] for no-llm no-synthea
 - [x] for synthea-patient
 - [x] make ambulance flip
-- [ ] for llm
+- [ ] fix llm errors
 - [x] for clickable patient
 - [ ] validate consistent fhir format for both LLM and NO LLM, and with and without synthea
 - [ ] validate consistent fhir format using fallback when using clickable patient

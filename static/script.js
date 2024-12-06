@@ -204,3 +204,8 @@ socket.on('update_state', (state) => {
 socket.on('update_log', (log) => {
     updateLog(log);
 });
+
+socket.on('update_request_counts', function(data) {
+    document.getElementById('requests-made').textContent = data.requests_made;
+    document.getElementById('requests-completed').textContent = data.requests_completed;
+});

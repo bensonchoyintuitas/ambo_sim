@@ -81,9 +81,14 @@ def generate_condition(patient_id, llm_model='gemma:2b'):
 
     try:
         response = ollama.generate(model=llm_model, prompt=prompt)
-        
-        # Extract just the JSON content from the response
         response_text = response['response']
+        
+        # Add debug logging
+        print(f"Raw LLM response: {response_text}")
+        
+        # Clean up the response text
+        # Remove any markdown code block markers
+        response_text = response_text.replace('```json', '').replace('```', '')
         
         # Find the JSON content between curly braces
         start = response_text.find('{')
@@ -93,18 +98,34 @@ def generate_condition(patient_id, llm_model='gemma:2b'):
             try:
                 condition = json.loads(response_text[start:end])
                 
-                # Validate that it's a Condition resource
-                if condition.get("resourceType") != "Condition":
-                    print("Generated resource is not a Condition")
+                # Validate required fields
+                required_fields = [
+                    "resourceType", "id", "clinicalStatus", "verificationStatus",
+                    "severity", "category", "code", "subject", "note"
+                ]
+                
+                missing_fields = [field for field in required_fields if field not in condition]
+                if missing_fields:
+                    print(f"Missing required fields: {missing_fields}")
                     return None
+                
+                # Ensure note field is properly structured
+                if not isinstance(condition["note"], list):
+                    condition["note"] = [{"text": str(condition["note"])}]
+                elif not condition["note"]:
+                    condition["note"] = [{"text": "No additional notes"}]
+                elif "text" not in condition["note"][0]:
+                    condition["note"][0] = {"text": str(condition["note"][0])}
                 
                 return condition
                 
             except json.JSONDecodeError as e:
                 print(f"Error parsing JSON: {str(e)}")
+                print(f"Invalid JSON content: {response_text[start:end]}")
                 return None
         else:
             print("No valid JSON found in response")
+            print(f"Response content: {response_text}")
             return None
             
     except Exception as e:

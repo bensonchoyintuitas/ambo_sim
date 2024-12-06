@@ -46,7 +46,7 @@ SESSION_DIR = None  # Will be set at runtime if OUTPUT_FHIR is True
 
 class Condition:
     def __init__(self, id, clinical_status, verification_status, severity, category, 
-                 code, subject_reference, onset_datetime, recorded_date, note):
+                 code, subject_reference, onset_datetime, recorded_date, note=None):
         self.id = id
         self.clinical_status = clinical_status
         self.verification_status = verification_status
@@ -61,18 +61,35 @@ class Condition:
     @classmethod
     def from_fhir(cls, fhir_condition):
         """Create a Condition object from a FHIR Condition resource"""
-        return cls(
-            id=fhir_condition.get('id'),
-            clinical_status=fhir_condition.get('clinicalStatus', {}).get('coding', [{}])[0],
-            verification_status=fhir_condition.get('verificationStatus', {}).get('coding', [{}])[0],
-            severity=fhir_condition.get('severity', {}).get('coding', [{}])[0],
-            category=fhir_condition.get('category', [{}])[0].get('coding', [{}])[0],
-            code=fhir_condition.get('code', {}).get('coding', [{}])[0],
-            subject_reference=fhir_condition.get('subject', {}).get('reference'),
-            onset_datetime=fhir_condition.get('onsetDateTime'),
-            recorded_date=fhir_condition.get('recordedDate'),
-            note=fhir_condition.get('note', [{}])[0].get('text')
-        )
+        try:
+            logging.debug(f"Creating Condition from FHIR resource: {json.dumps(fhir_condition, indent=2)}")
+            
+            # Safely extract note text
+            notes = fhir_condition.get('note', [])
+            note_text = notes[0].get('text') if notes else None
+            logging.debug(f"Extracted note text: {note_text}")
+            
+            # Create condition object
+            condition = cls(
+                id=fhir_condition.get('id'),
+                clinical_status=fhir_condition.get('clinicalStatus', {}).get('coding', [{}])[0],
+                verification_status=fhir_condition.get('verificationStatus', {}).get('coding', [{}])[0],
+                severity=fhir_condition.get('severity', {}).get('coding', [{}])[0],
+                category=fhir_condition.get('category', [{}])[0].get('coding', [{}])[0],
+                code=fhir_condition.get('code', {}).get('coding', [{}])[0],
+                subject_reference=fhir_condition.get('subject', {}).get('reference'),
+                onset_datetime=fhir_condition.get('onsetDateTime'),
+                recorded_date=fhir_condition.get('recordedDate'),
+                note=note_text
+            )
+            logging.debug(f"Successfully created Condition object with ID: {condition.id}")
+            return condition
+            
+        except Exception as e:
+            logging.error(f"Error creating Condition from FHIR: {str(e)}")
+            logging.error(f"FHIR condition data: {json.dumps(fhir_condition, indent=2)}")
+            logging.error(f"Traceback:", exc_info=True)
+            raise
 
     def to_dict(self):
         """Convert Condition object to dictionary for JSON serialization"""
@@ -414,11 +431,26 @@ def create_patient(house, session_dir=None, llm_model=None):
         
         # Generate condition using either API data or basic condition
         if USE_LLM:
-            condition = generate_condition(
-                patient_id=patient_resource['id'],
-                llm_model=llm_model or DEFAULT_LLM_MODEL
-            )
-        else:
+            logging.info(f"Generating condition using LLM model: {llm_model or DEFAULT_LLM_MODEL}")
+            request_counter.increment_started()
+            try:
+                condition_dict = generate_condition(
+                    patient_id=patient_resource['id'],
+                    llm_model=llm_model or DEFAULT_LLM_MODEL
+                )
+                request_counter.increment_completed()
+                logging.info(f"Successfully generated condition: {json.dumps(condition_dict, indent=2)}")
+                
+                # Convert dictionary to Condition object
+                condition = Condition.from_fhir(condition_dict)
+                logging.info("Successfully converted condition dict to object")
+                
+            except Exception as e:
+                logging.error(f"Error in LLM condition generation: {str(e)}", exc_info=True)
+                logging.info("Falling back to basic condition")
+                condition = None
+        
+        if not USE_LLM or condition is None:
             condition = Condition(
                 id=str(uuid.uuid4()),
                 clinical_status={'code': 'active', 'display': 'Active'},
@@ -431,22 +463,31 @@ def create_patient(house, session_dir=None, llm_model=None):
                 recorded_date=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 note="Basic fallback condition"
             )
+            logging.info("Created basic fallback condition")
         
         # Create the patient object
-        patient = Patient(
-            id=patient_resource['id'],
-            name=patient_resource['name'][0]['given'][0],
-            condition=condition,
-            dob=patient_resource.get('birthDate', 'Unknown'),
-            condition_note=condition.note if condition else None,
-            fhir_resources=patient_data
-        )
+        try:
+            patient = Patient(
+                id=patient_resource['id'],
+                name=patient_resource['name'][0]['given'][0],
+                condition=condition,
+                dob=patient_resource.get('birthDate', 'Unknown'),
+                condition_note=condition.note if condition else None,
+                fhir_resources=patient_data
+            )
+            logging.info(f"Successfully created patient: {patient.id}")
+        except Exception as e:
+            logging.error(f"Error creating Patient object: {str(e)}", exc_info=True)
+            logging.error(f"Patient resource: {json.dumps(patient_resource, indent=2)}")
+            logging.error(f"Condition object: {vars(condition) if condition else None}")
+            raise
         
         # Add patient to simulation
         patients.append(patient)
         house.add_patient(patient.id)
         
-        # Log patient creation
+        # Log patient creation with request counter stats
+        counts = request_counter.get_counts()
         log_parts = [
             f"Patient Generated:",
             f"ID: {patient.id}",
@@ -454,7 +495,9 @@ def create_patient(house, session_dir=None, llm_model=None):
             f"DOB: {patient.dob}",
             f"Condition: {condition.code.get('display', 'Unknown')}",
             f"Severity: {condition.severity.get('display', 'Unknown')}",
-            f"Clinical Status: {condition.clinical_status.get('display', 'Unknown')}"
+            f"Clinical Status: {condition.clinical_status.get('display', 'Unknown')}",
+            f"LLM Requests: {counts['started']}",
+            f"Completed: {counts['completed']}"
         ]
         
         if condition.note:
@@ -464,7 +507,7 @@ def create_patient(house, session_dir=None, llm_model=None):
         return patient
         
     except Exception as e:
-        logging.error(f"Error creating patient: {str(e)}")
+        logging.error(f"Error creating patient: {str(e)}", exc_info=True)
         return None
 
 def move_ambulances():
@@ -626,44 +669,64 @@ def validate_encounter_data(encounter):
 
 class RequestCounter:
     def __init__(self):
-        self.requests_made = 0
-        self.requests_completed = 0
-        self.lock = Lock()
-    
-    def increment_requests(self):
-        with self.lock:
-            self.requests_made += 1
-            self.emit_counts()
-    
-    def increment_completed(self):
-        with self.lock:
-            self.requests_completed += 1
-            self.emit_counts()
-    
-    def emit_counts(self):
-        socketio.emit('update_request_counts', {
-            'requests_made': self.requests_made,
-            'requests_completed': self.requests_completed
-        })
+        self._count = 0
+        self._lock = Lock()
+        self._completed = 0
 
+    def increment_started(self):
+        with self._lock:
+            self._count += 1
+            return self._count
+
+    def increment_completed(self):
+        with self._lock:
+            self._completed += 1
+            return self._completed
+
+    def get_counts(self):
+        with self._lock:
+            return {
+                'started': self._count,
+                'completed': self._completed
+            }
+
+# Add after other global variables
 request_counter = RequestCounter()
 
 # Modify process_patient_encounter to track requests
 def process_patient_encounter(hospital, patient):
-    """Process a single patient encounter."""
+    """Process a patient encounter with LLM if enabled."""
     try:
         if USE_LLM:
-            # Existing LLM-based encounter generation
-            request_counter.increment_requests()
+            request_counter.increment_started()
+            # Get condition description for context
+            condition_desc = (f"{patient.condition.code.get('display', 'Unknown condition')} - "
+                            f"Severity: {patient.condition.severity.get('display', 'Unknown severity')}")
+            
             encounter = generate_encounter(
                 patient_id=patient.id,
                 condition_id=patient.condition.id,
-                practitioner_id=f"pract-{str(uuid.uuid4())[:8]}", 
+                practitioner_id=str(uuid.uuid4()),  # Generate a random practitioner ID
                 organization_id=f"org-{hospital.id}",
-                condition_description=f"Patient presents with {patient.condition.code.get('display', 'Unknown condition')}",
+                condition_description=condition_desc,
                 llm_model=DEFAULT_LLM_MODEL
             )
             request_counter.increment_completed()
+            
+            if encounter:
+                patient.encounters.append(encounter)
+                log_event(f"Generated encounter for {patient.name} at Hospital {hospital.id}", 
+                         event_type='hospital')
+            else:
+                # Fallback to basic encounter if LLM fails
+                encounter = generate_fallback_encounter(
+                    patient_id=patient.id,
+                    condition_id=patient.condition.id,
+                    hospital_id=hospital.id
+                )
+                patient.encounters.append(encounter)
+                log_event(f"Using fallback encounter for {patient.name} at Hospital {hospital.id}", 
+                         event_type='hospital')
         else:
             # Generate basic encounter without LLM
             encounter = generate_fallback_encounter(
@@ -671,26 +734,13 @@ def process_patient_encounter(hospital, patient):
                 condition_id=patient.condition.id,
                 hospital_id=hospital.id
             )
+            patient.encounters.append(encounter)
             
-        encounter = validate_encounter_data(encounter)
-        patient.encounters.append(encounter)
+        return encounter
         
-        # Create summary from encounter data
-        diagnosis = encounter['diagnosis'][0]['condition']['display']
-        procedure = encounter['procedure'][0]['display']
-        encounter_type = encounter['type'][0]['coding'][0]['display']
-        
-        summary = (
-            f"Encounter documented for {patient.name}: "
-            f"Diagnosed with {diagnosis}, "
-            f"Procedure performed: {procedure}, "
-            f"Visit type: {encounter_type}"
-        )
-        log_event(summary, event_type='hospital')
-            
     except Exception as e:
-        logging.error(f"Error processing encounter for {patient.name}: {str(e)}")
-        log_event(f"Error documenting encounter for {patient.name}", event_type='hospital')
+        logging.error(f"Error in process_patient_encounter: {str(e)}", exc_info=True)
+        return None
 
 def manage_hospital_queues():
     """Manage the movement of patients between hospital queues."""
@@ -848,6 +898,20 @@ def save_fhir_resource(resource_type, resource):
 # Add at the top of the file with other imports
 file_operation_lock = Lock()
 
+def log_llm_stats():
+    """Log LLM request statistics periodically and emit to frontend."""
+    while True:
+        counts = request_counter.get_counts()
+        logging.info(f"LLM Requests - Started: {counts['started']}, Completed: {counts['completed']}")
+        
+        # Emit stats to frontend using the correct IDs
+        socketio.emit('update_request_counts', {
+            'requests_made': counts['started'],
+            'requests_completed': counts['completed']
+        })
+        
+        time.sleep(1)  # Update every second
+
 if __name__ == '__main__':
     parser = ArgumentParser(description='Run the ambulance simulation')
     parser.add_argument('--llm-model', type=str, default=DEFAULT_LLM_MODEL,
@@ -877,5 +941,8 @@ if __name__ == '__main__':
     Thread(target=lambda: generate_patients_automatically(args.llm_model)).start()
     Thread(target=move_ambulances).start()
     Thread(target=manage_hospital_queues).start()
+    
+    if USE_LLM:
+        Thread(target=log_llm_stats, daemon=True).start()
     
     socketio.run(app)
