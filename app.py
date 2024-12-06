@@ -368,14 +368,6 @@ def generate_fallback_encounter(patient_id, condition_id, hospital_id):
         'procedure': [{'display': random.choice(procedures)}]
     }
     
-    # Save the encounter to a file if OUTPUT_FHIR is enabled
-    if OUTPUT_FHIR and SESSION_DIR:
-        try:
-            save_fhir_resource('encounter_ed_presentation', encounter)
-            logging.info(f"Saved encounter FHIR resource for encounter {encounter['id']}")
-        except Exception as e:
-            logging.error(f"Error saving encounter FHIR resource: {str(e)}")
-    
     return encounter
 
 def generate_discharge_for_patient(hospital, patient):
@@ -440,6 +432,11 @@ def create_patient(house, session_dir=None, llm_model=None):
                 )
                 request_counter.increment_completed()
                 logging.info(f"Successfully generated condition: {json.dumps(condition_dict, indent=2)}")
+                
+                # Save the LLM-generated condition FHIR resource
+                if OUTPUT_FHIR and condition_dict:
+                    save_fhir_resource('condition', condition_dict)
+                    logging.info(f"Saved LLM-generated condition FHIR resource")
                 
                 # Convert dictionary to Condition object
                 condition = Condition.from_fhir(condition_dict)
@@ -703,43 +700,70 @@ def process_patient_encounter(hospital, patient):
             condition_desc = (f"{patient.condition.code.get('display', 'Unknown condition')} - "
                             f"Severity: {patient.condition.severity.get('display', 'Unknown severity')}")
             
-            encounter = generate_encounter(
+            encounter_dict = generate_encounter(
                 patient_id=patient.id,
                 condition_id=patient.condition.id,
-                practitioner_id=str(uuid.uuid4()),  # Generate a random practitioner ID
+                practitioner_id=str(uuid.uuid4()),
                 organization_id=f"org-{hospital.id}",
                 condition_description=condition_desc,
                 llm_model=DEFAULT_LLM_MODEL
             )
             request_counter.increment_completed()
             
-            if encounter:
-                patient.encounters.append(encounter)
-                log_event(f"Generated encounter for {patient.name} at Hospital {hospital.id}", 
-                         event_type='hospital')
-            else:
-                # Fallback to basic encounter if LLM fails
-                encounter = generate_fallback_encounter(
-                    patient_id=patient.id,
-                    condition_id=patient.condition.id,
-                    hospital_id=hospital.id
-                )
-                patient.encounters.append(encounter)
-                log_event(f"Using fallback encounter for {patient.name} at Hospital {hospital.id}", 
-                         event_type='hospital')
-        else:
-            # Generate basic encounter without LLM
-            encounter = generate_fallback_encounter(
-                patient_id=patient.id,
-                condition_id=patient.condition.id,
-                hospital_id=hospital.id
-            )
-            patient.encounters.append(encounter)
+            # Save the LLM-generated encounter if FHIR output is enabled
+            if OUTPUT_FHIR and SESSION_DIR and encounter_dict:
+                try:
+                    save_fhir_resource('encounter_ed_presentation', encounter_dict)
+                    logging.info(f"Saved encounter FHIR resource for encounter {encounter_dict.get('id', 'unknown')}")
+                except Exception as e:
+                    logging.error(f"Error saving encounter FHIR resource: {str(e)}")
             
-        return encounter
+            if encounter_dict:
+                patient.encounters.append(encounter_dict)
+                return encounter_dict
+            
+        # Use existing fallback logic if LLM fails or is disabled
+        fallback_encounter = generate_fallback_encounter(
+            patient_id=patient.id,
+            condition_id=patient.condition.id,
+            hospital_id=hospital.id
+        )
         
+        # Save the fallback encounter if FHIR output is enabled
+        if OUTPUT_FHIR and SESSION_DIR and fallback_encounter:
+            try:
+                save_fhir_resource('encounter_ed_presentation', fallback_encounter)
+                logging.info(f"Saved encounter FHIR resource for encounter {fallback_encounter.get('id', 'unknown')}")
+            except Exception as e:
+                logging.error(f"Error saving encounter FHIR resource: {str(e)}")
+            
+        return fallback_encounter
+            
     except Exception as e:
         logging.error(f"Error in process_patient_encounter: {str(e)}", exc_info=True)
+        return None
+
+def process_patient_discharge(hospital, patient, encounter):
+    """Process a patient discharge with LLM if enabled."""
+    try:
+        if encounter and 'period' in encounter and 'start' in encounter['period']:
+            start_time = encounter['period']['start']
+            end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            discharge_dict = generate_discharge(
+                encounter_id=encounter['id'],
+                start_time=start_time,
+                end_time=end_time
+            )
+            
+            if OUTPUT_FHIR:
+                save_fhir_resource('encounter_discharge', discharge_dict)
+                logging.info(f"Saved encounter discharge FHIR resource")
+            
+            return discharge_dict
+            
+    except Exception as e:
+        logging.error(f"Error in process_patient_discharge: {str(e)}", exc_info=True)
         return None
 
 def manage_hospital_queues():
