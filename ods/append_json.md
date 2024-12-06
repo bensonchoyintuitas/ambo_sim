@@ -26,8 +26,8 @@ python3 append_json.py input.json --filename output --format csv
 ```
 ```bash
 source .venv/bin/activate 
-python3 append_json.py patient_pat-9791.json --filename patient --format csv
-python3 append_json.py patient_6462bf29-68f3-36ca-2f78-ff1ce05d1484.json --filename patient --format csv
+python3 append_json.py patient_pat-9791.json --path ./output --filename patient --format csv
+python3 append_json.py patient_6462bf29-68f3-36ca-2f78-ff1ce05d1484.json --path ./output --filename patient --format csv
 ```
 
 ### Arguments

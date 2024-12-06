@@ -101,14 +101,19 @@ def main():
     parser.add_argument('--filename', required=True, help='Output file name')
     parser.add_argument('--format', choices=['csv', 'parquet'], default='csv', 
                         help='Output file format (csv or parquet)')
+    parser.add_argument('--path', help='Output directory path (relative to script)', default='')
     args = parser.parse_args()
     
     # Get the script's directory
     script_dir = Path(__file__).parent
     
-    # Input and output paths
+    # Input path
     input_path = script_dir / args.input_file
-    output_path = script_dir / args.filename
+    
+    # Output path - combine script_dir, provided path, and filename
+    output_dir = script_dir / args.path if args.path else script_dir
+    output_dir.mkdir(parents=True, exist_ok=True)  # Create directory if it doesn't exist
+    output_path = output_dir / args.filename
     
     # Add extension if not provided
     if not output_path.suffix:
