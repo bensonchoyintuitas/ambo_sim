@@ -10,6 +10,17 @@ A Python utility that processes JSON files, flattens nested structures, and merg
 - Handles column mismatches between existing and new data
 - Uses DuckDB for efficient data merging
 
+## Logging
+
+The script maintains a log file (with .log extension) in the same directory as the output file. The log tracks:
+
+- Source filename
+- Processing timestamp 
+- Number of columns in the processed data
+
+Example log file (output/patient.log):
+
+
 ## Prerequisites
 
 ```bash
@@ -24,28 +35,31 @@ Basic usage:
 source .venv/bin/activate 
 python3 append_json.py input.json --filename output --format csv
 ```
-```bash
-source .venv/bin/activate 
-python3 append_json.py patient_pat-9791.json --path ./output --filename patient --format csv
-python3 append_json.py patient_6462bf29-68f3-36ca-2f78-ff1ce05d1484.json --path ./output --filename patient --format csv
-```
+
 
 ### Arguments
 
 - `input_file`: Path to the input JSON file (required)
 - `--filename`: Name of the output file (required)
 - `--format`: Output format, either 'csv' or 'parquet' (default: 'csv')
+- `--path`: Output directory path relative to script location (optional, default: current directory)
 
 ### Examples
+Process patient JSON files:
+```bash
+source .venv/bin/activate 
+python3 append_json.py patient_pat-9791.json --path ./output --filename patient --format csv
+python3 append_json.py patient_6462bf29-68f3-36ca-2f78-ff1ce05d1484.json --path ./output --filename patient --format csv
+```
 
 Convert a JSON file to CSV:
 ```bash
-python3 append_json.py data.json --filename processed_data --format csv
+python3 append_json.py data.json --filename processed_data --format csv --path ./output
 ```
 
 Convert a JSON file to Parquet:
 ```bash
-python3 append_json.py data.json --filename processed_data --format parquet
+python3 append_json.py data.json --filename processed_data --format parquet --path ./output
 ```
 
 ### Input JSON Format

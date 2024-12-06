@@ -3,6 +3,7 @@ import pandas as pd
 import duckdb
 from pathlib import Path
 import argparse
+from datetime import datetime
 
 def flatten_json(nested_json, prefix=''):
     """
@@ -59,6 +60,34 @@ def merge_dataframes(existing_df, new_df):
     result = con.execute(query).df()
     return result
 
+def log_processing(input_file, output_path, num_columns):
+    """
+    Log processing details to a CSV log file
+    """
+    # Create log filename with same path but .log extension
+    log_path = output_path.with_suffix('.log')
+    
+    # Prepare log entry
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    log_entry = {
+        'source_filename': str(input_file),
+        'processed_timestamp': timestamp,
+        'number_of_columns': num_columns
+    }
+    
+    # Convert to DataFrame
+    log_df = pd.DataFrame([log_entry])
+    
+    # Append or create log file
+    if log_path.exists():
+        existing_log = pd.read_csv(log_path)
+        updated_log = pd.concat([existing_log, log_df], ignore_index=True)
+    else:
+        updated_log = log_df
+    
+    # Save log
+    updated_log.to_csv(log_path, index=False)
+
 def process_json_file(input_file, output_file, output_format='csv'):
     """
     Process a JSON file and merge with existing output file if it exists
@@ -89,6 +118,9 @@ def process_json_file(input_file, output_file, output_format='csv'):
         result_df.to_csv(output_path, index=False)
     else:  # parquet
         result_df.to_parquet(output_path, index=False)
+    
+    # Log the processing
+    log_processing(input_file, output_path, len(result_df.columns))
     
     print(f"Processed {input_file} and saved to {output_file}")
     print(f"Total rows: {len(result_df)}")

@@ -97,7 +97,7 @@ The LLM models trade off between speed and quality of generated content. The lla
 
 ## Schemas
 Schemas are compatible, but vary in terms of element coverage depending on NoSynthea, Synthea and LLM usage.
-- See [PATIENT-SCHEMA.md](PATIENT-SCHEMA.md) for detailed patient schema documentation
+- See [patient_schema.md](patient_schema.md) for detailed patient schema documentation
 
 ## Data Flow and Components
 
@@ -206,7 +206,10 @@ The system generates two distinct types of encounter messages that should be han
 - [ ] refactor to DRY all fallbacks (clickable, automated)
 
 # ods
-- [x] See [ODS README](ods/README.md) for details on operational data store
+## append_json.py
+Appends new patient data to existing JSON files. See [append_json.md](append_json.md) for detailed usage instructions.
+
+- [x] See [append_json.md](ods/append_json.md) for details on operational data store TOOLS
 
 
 # kafka_output
@@ -224,8 +227,6 @@ The system generates two distinct types of encounter messages that should be han
 # Stage 5 Advanced
 - [ ] Agent-driven independent ambulances
 - [ ] Configurable number of ambulances, hospitals and houses
-
-
 
 
 
