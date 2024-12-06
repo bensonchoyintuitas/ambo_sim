@@ -35,48 +35,50 @@ source .venv/bin/activate
 ```
 Basic usage for a single file:
 ```bash
-python3 append_json.py input.json --filename output --format csv
+python3 append_json.py --input input.json --filename output --path ./output--format csv
+```
+Convert a JSON file to Parquet:
+```bash
+python3 append_json.py --input input.json --filename output --path ./output --format parquet 
 ```
 
 Process all JSON files in a directory:
 ```bash
-python3 append_json.py /path/to/json/folder --filename output --format csv
+python3 append_json.py --input /path/to/json/folder --filename output --path ./output --format csv
+```
+
+Force processing of all files (ignore log):
+```bash
+python3 append_json.py --input /path/to/json/folder --filename output --path ./output --format csv --force-all
 ```
 
 ### Arguments
 
-- `input_file`: Path to the input JSON file (required)
+- `--input`: Path to either a JSON file or directory containing JSON files (required)
 - `--filename`: Name of the output file (required)
 - `--format`: Output format, either 'csv' or 'parquet' (default: 'csv')
 - `--path`: Output directory path relative to script location (optional, default: current directory)
+- `--force-all`: Process all files even if they've been processed before (optional)
 
 ### Examples
 Process patient JSON files:
 ```bash
 source .venv/bin/activate 
-python3 append_json.py patient_pat-9791.json --path ./output --filename patient --format csv
-python3 append_json.py patient_6462bf29-68f3-36ca-2f78-ff1ce05d1484.json --path ./output --filename patient --format csv
+python3 append_json.py --input patient_pat-9791.json --path ./output --filename patient --format csv
+python3 append_json.py --input patient_6462bf29-68f3-36ca-2f78-ff1ce05d1484.json --path ./output --filename patient --format csv
 
 # relative path
-python append_json.py ../output_fhir/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
+python append_json.py --input ../output_fhir/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
 # process all files in a directory
-python append_json.py ../output_fhir/session_20241205_220516/patient/ --path ./output --filename patient --format csv
+python append_json.py --input ../output_fhir/session_20241205_220516/patient/ --path ./output --filename patient --format csv
 
 # absolute path
-python append_json.py /full/path/to/output_fhir/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
+python append_json.py --input /full/path/to/output_fhir/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
 
 ```
 
-Convert a JSON file to CSV:
-```bash
-python3 append_json.py data.json --filename processed_data --format csv --path ./output
 
-```
 
-Convert a JSON file to Parquet:
-```bash
-python3 append_json.py data.json --filename processed_data --format parquet --path ./output
-```
 
 ### Input JSON Format
 

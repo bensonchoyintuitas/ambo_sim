@@ -128,23 +128,41 @@ def process_json_file(input_file, output_file, output_format='csv'):
     print("\nSample of data:")
     print(result_df.head())
 
-def process_input_path(input_path, output_path, output_format='csv'):
+def check_if_processed(input_file, log_path):
+    """
+    Check if a file has already been processed by looking in the log
+    """
+    if not log_path.exists():
+        return False
+        
+    log_df = pd.read_csv(log_path)
+    return str(input_file) in log_df['source_filename'].values
+
+def process_input_path(input_path, output_path, output_format='csv', force_all=False):
     """
     Process either a single JSON file or all JSON files in a directory
     """
     if input_path.is_file():
         if input_path.suffix.lower() == '.json':
+            log_path = output_path.with_suffix('.log')
+            if not force_all and check_if_processed(input_path, log_path):
+                print(f"Skipping already processed file: {input_path}")
+                return
             process_json_file(input_path, output_path, output_format)
         else:
             print(f"Skipping non-JSON file: {input_path}")
     elif input_path.is_dir():
-        json_files = list(input_path.glob('**/*.json'))  # Recursively find all JSON files
+        json_files = list(input_path.glob('**/*.json'))
         if not json_files:
             print(f"No JSON files found in directory: {input_path}")
             return
         
+        log_path = output_path.with_suffix('.log')
         print(f"Found {len(json_files)} JSON files to process")
         for json_file in json_files:
+            if not force_all and check_if_processed(json_file, log_path):
+                print(f"Skipping already processed file: {json_file}")
+                continue
             print(f"\nProcessing: {json_file}")
             process_json_file(json_file, output_path, output_format)
     else:
@@ -152,18 +170,20 @@ def process_input_path(input_path, output_path, output_format='csv'):
 
 def main():
     parser = argparse.ArgumentParser(description='Process JSON files and merge into CSV/Parquet')
-    parser.add_argument('input_path', help='Input JSON file or directory containing JSON files')
+    parser.add_argument('--input', required=True, help='Input JSON file or directory containing JSON files')
     parser.add_argument('--filename', required=True, help='Output file name')
     parser.add_argument('--format', choices=['csv', 'parquet'], default='csv', 
                         help='Output file format (csv or parquet)')
     parser.add_argument('--path', help='Output directory path (relative to script)', default='')
+    parser.add_argument('--force-all', action='store_true', 
+                        help='Process all files even if already in log')
     args = parser.parse_args()
     
     # Get the script's directory
     script_dir = Path(__file__).parent
     
     # Input path - allow for absolute paths or paths relative to current directory
-    input_path = Path(args.input_path)
+    input_path = Path(args.input)
     if not input_path.is_absolute():
         input_path = script_dir / input_path
     
@@ -176,7 +196,7 @@ def main():
     if not output_path.suffix:
         output_path = output_path.with_suffix(f'.{args.format}')
     
-    process_input_path(input_path, output_path, args.format)
+    process_input_path(input_path, output_path, args.format, args.force_all)
 
 if __name__ == "__main__":
     main()
