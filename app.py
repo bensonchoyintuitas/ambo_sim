@@ -828,9 +828,38 @@ def handle_create_patient_at_house(data):
     house = next((h for h in houses if h.id == house_id), None)
     
     if house and not house.patient_ids:
-        patient = create_patient(house, SESSION_DIR)
-        if patient:
-            socketio.emit('update_state', get_state())
+        # Force fallback generation for clicked patients (no Synthea, no LLM)
+        patient_data = generate_fallback_patient(SESSION_DIR)
+        patient_resource = patient_data.get('patient', {})
+        
+        # Generate basic condition without LLM
+        condition = generate_fallback_condition(patient_resource['id'])
+        
+        # Create patient object with fallback data
+        patient = Patient(
+            id=patient_resource['id'],
+            name=patient_resource['name'][0]['given'][0],
+            condition=condition,
+            dob=patient_resource.get('birthDate', 'Unknown'),
+            condition_note=condition.note if condition else None,
+            fhir_resources=patient_data
+        )
+        
+        # Add patient to simulation
+        patients.append(patient)
+        house.add_patient(patient.id)
+        
+        # Log patient creation
+        log_event(
+            f"Patient Generated (Fallback): "
+            f"ID: {patient.id} | "
+            f"Name: {patient.name} | "
+            f"Condition: {condition.code.get('display', 'Unknown')} | "
+            f"Severity: {condition.severity.get('display', 'Unknown')}",
+            event_type='patient'
+        )
+        
+        socketio.emit('update_state', get_state())
 
 def generate_random_patient(llm_model=None):
     """Generate a patient at a random house."""
