@@ -2,6 +2,7 @@
 
 A Python utility that processes JSON files, flattens nested structures, and merges them into either CSV or Parquet files. The script handles nested JSON objects by flattening them into a single-level structure and can merge new data with existing files.
 
+
 ## Features
 
 - Flattens nested JSON structures
@@ -9,6 +10,8 @@ A Python utility that processes JSON files, flattens nested structures, and merg
 - Automatically merges with existing output files
 - Handles column mismatches between existing and new data
 - Uses DuckDB for efficient data merging
+- Default behaviour is to skip files that have already been processed
+- Optional force processing of all files
 
 ## Logging
 
@@ -69,8 +72,12 @@ python3 append_json.py --input patient_6462bf29-68f3-36ca-2f78-ff1ce05d1484.json
 
 # relative path
 python append_json.py --input ../output_fhir/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
+
 # process all files in a directory
 python append_json.py --input ../output_fhir/session_20241205_220516/patient/ --path ./output --filename patient --format csv
+
+# process all files in a directory
+python append_json.py --input ../output_fhir/session_20241205_220516/encounter_ed_presentation/ --path ./output --filename encounter_ed_presentation --format csv
 
 # absolute path
 python append_json.py --input /full/path/to/output_fhir/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv

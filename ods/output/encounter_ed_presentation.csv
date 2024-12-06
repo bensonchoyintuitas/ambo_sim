@@ -1,0 +1,3 @@
+subject_reference,id,period_start,procedure_0_display,type_0_coding_0_display,reasonCode_0_coding_0_display,serviceType_coding_0_display,priority_coding_0_display,status,diagnosis_0_condition_display
+Patient/pat-9791,d18858a9-fc8a-433d-bffc-e515e498e7b9,2024-12-05T12:05:39Z,Blood test,Emergency visit,Emergency presentation,Emergency Medicine,Urgent,finished,Acute condition
+Patient/pat-2101,f3649b95-5ebf-4fdc-8f38-69199c129d33,2024-12-05T12:05:31Z,Blood test,Emergency visit,Emergency presentation,Emergency Medicine,Urgent,finished,Acute condition
