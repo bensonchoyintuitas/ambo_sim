@@ -198,8 +198,8 @@ The system generates two distinct types of encounter messages that should be han
 - [x] for no-llm no-synthea
 - [x] for synthea-patient
 - [x] make ambulance flip
-- [ ] fix llm errors
-- [x] for clickable patient
+- [x] fix llm errors
+- [] force clickable patient to be fallback for speed
 - [ ] validate consistent fhir format for both LLM and NO LLM, and with and without synthea
 - [ ] validate consistent fhir format using fallback when using clickable patient
 - [ ] conform to synthea as base template for fallback
