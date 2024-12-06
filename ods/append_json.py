@@ -139,8 +139,10 @@ def main():
     # Get the script's directory
     script_dir = Path(__file__).parent
     
-    # Input path
-    input_path = script_dir / args.input_file
+    # Input path - allow for absolute paths or paths relative to current directory
+    input_path = Path(args.input_file)
+    if not input_path.is_absolute():
+        input_path = script_dir / input_path
     
     # Output path - combine script_dir, provided path, and filename
     output_dir = script_dir / args.path if args.path else script_dir

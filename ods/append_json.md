@@ -50,11 +50,16 @@ Process patient JSON files:
 source .venv/bin/activate 
 python3 append_json.py patient_pat-9791.json --path ./output --filename patient --format csv
 python3 append_json.py patient_6462bf29-68f3-36ca-2f78-ff1ce05d1484.json --path ./output --filename patient --format csv
+# relative path
+python append_json.py ../output_fhir/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
+# absolute path
+python append_json.py /full/path/to/output_fhir/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
 ```
 
 Convert a JSON file to CSV:
 ```bash
 python3 append_json.py data.json --filename processed_data --format csv --path ./output
+
 ```
 
 Convert a JSON file to Parquet:
