@@ -196,10 +196,10 @@ The system generates two distinct types of encounter messages that should be han
 
 # fhir_output - Output all FHIR resources to files
 - [x] for no-llm no-synthea
-- [x] for synthea
+- [x] for synthea-patient
 - [x] make ambulance flip
 - [ ] for llm
-- [ ] for clickable patient
+- [x] for clickable patient
 - [ ] validate consistent fhir format for both LLM and NO LLM, and with and without synthea
 - [ ] validate consistent fhir format using fallback when using clickable patient
 - [ ] conform to synthea as base template for fallback

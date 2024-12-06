@@ -6,6 +6,7 @@ This directory contains patient data in various formats and the tools to process
 ## To improve
 - Make a persistent output file (parquet) with schema evolution
 - Make a persistent loading mechanism to load the json straight into the persistent store
+- Make it generic for any given json file
 
 ## Schema Documentation
 
@@ -13,7 +14,7 @@ This directory contains patient data in various formats and the tools to process
 
 ## Files
 
-- `flatten_patient.py`: Converts FHIR JSON patient data to CSV format
+- `flatten_json.py`: Converts JSON data to CSV format by flattening nested structures
 - `union_patients.py`: Combines multiple patient CSV files
 - Patient data files in both JSON and CSV formats
 
@@ -22,7 +23,7 @@ This directory contains patient data in various formats and the tools to process
 
 1. Convert JSON to CSV:
 ```bash
-python flatten_patient.py input.json output.csv
+python flatten_json.py input.json
 ```
 
 2. Combine multiple CSV files:
