@@ -104,7 +104,7 @@ The LLM models trade off between speed and quality of generated content. The lla
       - Supports continuous monitoring of export directory
       - Configurable output formats and paths
       - See [append_json.md](tools/append_json_to_ods/append_json.md) for usage details
-      
+
 ## Documentation 
 - `/docs` - Additional documentation files
   - Schema definitions
@@ -224,11 +224,10 @@ The system generates two distinct types of encounter messages that should be han
 - [x] for synthea-patient
 - [x] make ambulance flip
 - [x] fix llm errors
-- [] force clickable patient to be fallback for speed
-- [ ] validate consistent fhir format for both LLM and NO LLM, and with and without synthea
-- [ ] validate consistent fhir format using fallback when using clickable patient
-- [ ] conform to synthea as base template for fallback
-- [ ] refactor to DRY all fallbacks (clickable, automated)
+- [x] force clickable patient to be fallback for speed
+- [x] validate consistent fhir format for both LLM and NO LLM, and with and without synthea
+- [x] validate consistent fhir format using fallback when using clickable patient
+- [-] conform to synthea as base template for fallback
 
 
 # kafka_output
@@ -236,12 +235,12 @@ The system generates two distinct types of encounter messages that should be han
 
 
 # Stage 3
+- [ ] refactor to DRY all fallbacks (clickable, automated)
 - [ ] If an ambulance is wiating with patient - they cannot leave
 - [ ] Vary treatment time by severity
 - [ ] Speed things up (maybe pregen into CSVs and load from there)
 - [ ] Reflect more accurate patient flow (see [fhir_process.md](docs/fhir_process.md))
 - [ ] Have patient-centric view of flow events (filterable)
-- [ ] Make patient ID more unique and consistent
 
 # Stage 5 Advanced
 - [ ] Agent-driven independent ambulances
