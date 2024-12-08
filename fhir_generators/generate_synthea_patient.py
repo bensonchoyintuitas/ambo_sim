@@ -52,6 +52,25 @@ def generate_fallback_patient(session_dir=None):
     
     family_name = random.choice(family_names) + str(patient_number)
     
+    # Generate random birthdate for someone over 18
+    current_year = datetime.now().year
+    year = random.randint(current_year - 80, current_year - 18)  # Between 18 and 80 years old
+    month = random.randint(1, 12)
+    # Handle different days per month
+    if month in [4, 6, 9, 11]:
+        day = random.randint(1, 30)
+    elif month == 2:
+        # Handle leap years
+        if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
+            day = random.randint(1, 29)
+        else:
+            day = random.randint(1, 28)
+    else:
+        day = random.randint(1, 31)
+    
+    # Format date as YYYY-MM-DD
+    birthDate = f"{year}-{month:02d}-{day:02d}"
+    
     # Create FHIR patient resource
     fhir_patient = {
         'resourceType': 'Patient',
@@ -60,7 +79,7 @@ def generate_fallback_patient(session_dir=None):
             'given': [given_name],
             'family': family_name
         }],
-        'birthDate': '1970-01-01',  # Default birthdate
+        'birthDate': birthDate,  # Use the random birthdate
         'gender': gender,  # Add gender element
         'identifier': [  # Add identifier element
             {

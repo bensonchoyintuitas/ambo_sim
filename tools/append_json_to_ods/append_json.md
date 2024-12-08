@@ -141,3 +141,7 @@ id,name,address_street,address_city,phones_0,phones_1
 - When merging with existing files, records are matched based on the 'id' field
 - The script will create the output file if it doesn't exist
 - If the output file exists, the new data will be merged with the existing data
+
+# To improve
+- output to tables within a duckdb database
+- output to deltalake / iceberg tables
