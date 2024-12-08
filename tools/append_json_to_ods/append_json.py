@@ -31,6 +31,10 @@ def merge_dataframes(existing_df, new_df):
     """
     Merge two dataframes, combining columns and handling duplicates
     """
+    # Convert all columns to string type to avoid type mismatches
+    existing_df = existing_df.astype(str)
+    new_df = new_df.astype(str)
+    
     con = duckdb.connect(':memory:')
     
     # Convert dataframes to DuckDB tables
