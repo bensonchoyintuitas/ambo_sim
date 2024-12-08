@@ -7,7 +7,6 @@ from datetime import datetime
 import os
 import time
 import sys
-from fhir_generators.generate_encounter_discharge import generate_encounter_discharge
 
 def flatten_json(nested_json, prefix=''):
     """

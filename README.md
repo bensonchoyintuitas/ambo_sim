@@ -9,8 +9,8 @@ This simulator models an emergency medical services (EMS) system to help underst
 - Generate realistic healthcare datasets for testing and development
 - Support training for healthcare administrators and emergency response planners
 
-See [business_process.md](business_process.md) for the idealbusiness process.
-See [fhir_process.md](fhir_process.md) for the idealFHIR resources and exchanges.
+See [business_process.md](docs/business_process.md) for the ideal business process.
+See [fhir_process.md](docs/fhir_process.md) for the ideal FHIR resources and exchanges.
 
 **What you'll see:**
 - A rectangular canvas representing the town.
@@ -86,6 +86,32 @@ Controls which LLM to use for enhancing patient data. Options:
 The LLM models trade off between speed and quality of generated content. The llama3.1:8b model is recommended for production use when accuracy is critical.
 
 
+# Project Structure
+
+## Core Folders
+- `/ambo_sim` - Main project directory containing core simulation code
+  - `app.py` - Main simulation application and Flask server
+  - `templates/` - HTML templates for web visualization
+  - `static/` - CSS, JavaScript and other static assets
+  - `fhir_generators/` - Modules for generating FHIR resources
+  - `/fhir_export` - Output directory for FHIR JSON files
+    - Organized by session timestamp and resource type
+    - Contains patient, condition, encounter resources
+    - Excluded from git via .gitignore
+  - `/tools` - Utility scripts and data processing tools
+    - `/append_json_to_ods` - Tool for converting FHIR JSON to CSV/Parquet 
+      - Processes output files for analysis
+      - Supports continuous monitoring of export directory
+      - Configurable output formats and paths
+      - See [append_json.md](tools/append_json_to_ods/append_json.md) for usage details
+      
+## Documentation 
+- `/docs` - Additional documentation files
+  - Schema definitions
+  - API documentation
+  - Architecture diagrams
+
+
 # How the simulation works
 
 ## Patient Flow
@@ -96,7 +122,7 @@ The LLM models trade off between speed and quality of generated content. The lla
 
 ## Schemas
 Schemas are compatible, but vary in terms of element coverage depending on NoSynthea, Synthea and LLM usage.
-- See [patient_schema.md](patient_schema.md) for detailed patient schema documentation
+- See [patient_schema.md](docs/patient_schema.md) for detailed patient schema documentation
 
 ## Data Flow and Components
 
@@ -139,7 +165,7 @@ Schemas are compatible, but vary in terms of element coverage depending on NoSyn
    - Patient resources are created initially from Synthea
    - LLM enhances with additional resources during simulation
    - Resources follow the patient through the care journey
-   - See fhir_process.md for detailed FHIR workflows
+   - See [fhir_process.md](docs/fhir_process.md) for detailed FHIR workflows
 
 The simulation combines realistic patient data from Synthea with LLM-enhanced medical scenarios, creating a dynamic emergency response system simulation.
 
@@ -204,12 +230,6 @@ The system generates two distinct types of encounter messages that should be han
 - [ ] conform to synthea as base template for fallback
 - [ ] refactor to DRY all fallbacks (clickable, automated)
 
-# ods
-## append_json.py
-Appends new patient data to existing JSON files. See [append_json.md](append_json.md) for detailed usage instructions.
-
-- [x] See [append_json.md](ods/append_json.md) for details on operational data store TOOLS
-
 
 # kafka_output
 - [ ] Send data to kafka
@@ -219,7 +239,7 @@ Appends new patient data to existing JSON files. See [append_json.md](append_jso
 - [ ] If an ambulance is wiating with patient - they cannot leave
 - [ ] Vary treatment time by severity
 - [ ] Speed things up (maybe pregen into CSVs and load from there)
-- [ ] Reflect more accurate patient flow (see [fhir_process.md](fhir_process.md))
+- [ ] Reflect more accurate patient flow (see [fhir_process.md](docs/fhir_process.md))
 - [ ] Have patient-centric view of flow events (filterable)
 - [ ] Make patient ID more unique and consistent
 

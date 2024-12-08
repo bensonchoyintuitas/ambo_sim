@@ -64,6 +64,28 @@ python3 append_json.py --input /path/to/json/folder --filename output --path ./o
 - `--force-all`: Process all files even if they've been processed before (optional)
 - `--continuous SECONDS`: Run continuously with specified interval in seconds until stopped with Ctrl+C (optional)
 
+### Typical set of consumers
+```bash
+# Run continuously, checking for new files every 30 seconds
+source .venv/bin/activate 
+python3 append_json.py --input ../../fhir_export/session_20241208_205148/patient/ --path ./output --filename patient --format csv --continuous 30
+
+# In a new window
+source .venv/bin/activate 
+python3 append_json.py --input ../../fhir_export/session_20241208_205148/condition/ --path ./output --filename condition --format csv --continuous 30
+
+# In a new window
+source .venv/bin/activate 
+python3 append_json.py --input ../../fhir_export/session_20241208_205148/encounter_ed_presentation/ --path ./output --filename encounter_ed_presentation --format csv --continuous 30
+
+# In a new window
+source .venv/bin/activate 
+python3 append_json.py --input ../../fhir_export/session_20241208_205148/encounter_discharge/ --path ./output --filename encounter_discharge --format csv --continuous 30
+```
+
+
+
+
 ### Examples
 Process patient JSON files:
 ```bash
@@ -75,18 +97,15 @@ python3 append_json.py --input patient_6462bf29-68f3-36ca-2f78-ff1ce05d1484.json
 python append_json.py --input ../output_fhir/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
 
 # process all files in a directory
-python append_json.py --input ../fhir_export/session_20241205_220516/patient/ --path ./output --filename patient --format csv
-python append_json.py --input ../fhir_export/session_20241205_220516/encounter_ed_presentation/ --path ./output --filename encounter_ed_presentation --format csv
-python append_json.py --input ../fhir_export/session_20241205_220516/encounter_discharge/ --path ./output --filename encounter_discharge --format csv
-python append_json.py --input ../fhir_export/session_20241205_220516/condition/ --path ./output --filename condition --format csv
+python3 append_json.py --input ../fhir_export/session_20241205_220516/patient/ --path ./output --filename patient --format csv
+python3 append_json.py --input ../fhir_export/session_20241205_220516/encounter_ed_presentation/ --path ./output --filename encounter_ed_presentation --format csv
+python3 append_json.py --input ../fhir_export/session_20241205_220516/encounter_discharge/ --path ./output --filename encounter_discharge --format csv
+python3 append_json.py --input ../fhir_export/session_20241205_220516/condition/ --path ./output --filename condition --format csv
 
 # absolute path
 python append_json.py --input /full/path/to/fhir_export/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
-
-# Run continuously, checking for new files every 30 seconds
-python append_json.py --input ../fhir_export/session_20241205_220516/patient/ --path ./output --filename patient --format csv --continuous 30
-
 ```
+
 
 
 
