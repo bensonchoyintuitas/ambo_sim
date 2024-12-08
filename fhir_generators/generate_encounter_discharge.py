@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 import json
 
-def generate_discharge(encounter_id, start_time, end_time):
+def generate_encounter_discharge(encounter_id, start_time, end_time):
     """Generate a FHIR Encounter discharge resource.
     
     Args:
@@ -48,7 +48,7 @@ if __name__ == '__main__':
     # Use current time for start/end if not provided
     current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     
-    discharge = generate_discharge(
+    discharge = generate_encounter_discharge(
         args.encounter_id,
         args.start_time or current_time,
         args.end_time or current_time

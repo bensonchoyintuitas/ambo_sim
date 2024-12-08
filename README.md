@@ -38,14 +38,13 @@ source .venv/bin/activate
 python3 app.py --no-llm # no LLM
 
 # output FHIR resources to file
-python3 app.py --no-llm --output-fhir
+python3 app.py --no-llm --fhir-export
 
- # llm choices
-python3 app.py --llm-model llama3.1:8b --output-fhir # better
-python3 app.py --llm-model llama3.2:1b --output-fhir # lacking the note fiel
-python3 app.py --llm-model gemma2:2b --output-fhir
+# llm choices
+python3 app.py --llm-model llama3.1:8b --fhir-export # better
+python3 app.py --llm-model llama3.2:1b --fhir-export # lacking the note field
+python3 app.py --llm-model gemma2:2b --fhir-export
 python3 app.py --llm-model gemma:2b # worse
-python3 app.py --llm-model llama2:7b 
 ```
 # Command Line Switches
 
@@ -55,9 +54,9 @@ python3 app.py --llm-model llama2:7b
 - Uses basic patient/condition generation only
 - Recommended for testing or when speed is priority
 
-`--output-fhir` 
+`--fhir-export` 
 - Enables saving of FHIR resources as JSON files
-- Creates timestamped session directory under output_fhir/
+- Creates timestamped session directory under fhir_export/
 - Organizes resources by type (patient, condition, etc)
 - Useful for data analysis and integration testing
 

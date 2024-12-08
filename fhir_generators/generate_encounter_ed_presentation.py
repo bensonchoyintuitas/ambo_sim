@@ -4,7 +4,7 @@ import json
 import uuid
 import argparse
 
-def generate_encounter(patient_id, condition_id, practitioner_id, organization_id, condition_description=None, llm_model='gemma:2b'):
+def generate_encounter_ed_presentation(patient_id, condition_id, practitioner_id, organization_id, condition_description=None, llm_model='gemma:2b'):
     """Generate a FHIR Encounter resource for a given patient and condition.
     
     Args:
@@ -192,7 +192,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     print(f"Generating encounter using {args.llm_model}")
-    encounter = generate_encounter(
+    encounter = generate_encounter_ed_presentation(
         args.patient_id,
         args.condition_id,
         args.practitioner_id,

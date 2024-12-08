@@ -6,17 +6,17 @@ from threading import Thread, Lock
 import math
 from datetime import datetime, timezone
 import json
-from generate_synthea_patient import generate_fallback_patient, generate_fhir_resources  # Import the function
+from fhir_generators.generate_synthea_patient import generate_fallback_patient, generate_fhir_resources  # Import the function
 import uuid
 import logging
-from ai.generate_condition import generate_condition
-from ai.generate_encounter import generate_encounter
-from ai.generate_encounter_discharge import generate_discharge
+from fhir_generators.generate_condition import generate_condition
+from fhir_generators.generate_encounter_ed_presentation import generate_encounter_ed_presentation
+from fhir_generators.generate_encounter_discharge import generate_encounter_discharge
 from concurrent.futures import ThreadPoolExecutor
 import functools
 from argparse import ArgumentParser
 import atexit  # Add this import
-from generate_synthea_patient import generate_fallback_patient  # Import the function
+from fhir_generators.generate_synthea_patient import generate_fallback_patient  # Import the function
 import os  # Add this if not already present
 
 # Configure logging
@@ -41,7 +41,7 @@ PATIENT_GENERATION_LOWER_BOUND = 5  # Lower bound for patient generation delay
 PATIENT_GENERATION_UPPER_BOUND = 10  # Upper bound for patient generation delay
 USE_LLM = True  # Default value, will be updated by command line args
 OUTPUT_FHIR = False  # Default value, will be updated by command line args
-FHIR_OUTPUT_DIR = "output_fhir"  # Base directory for FHIR outputs
+FHIR_OUTPUT_DIR = "fhir_export"  # Base directory for FHIR outputs
 SESSION_DIR = None  # Will be set at runtime if OUTPUT_FHIR is True
 
 class Condition:
@@ -700,7 +700,7 @@ def process_patient_encounter(hospital, patient):
             condition_desc = (f"{patient.condition.code.get('display', 'Unknown condition')} - "
                             f"Severity: {patient.condition.severity.get('display', 'Unknown severity')}")
             
-            encounter_dict = generate_encounter(
+            encounter_dict = generate_encounter_ed_presentation(
                 patient_id=patient.id,
                 condition_id=patient.condition.id,
                 practitioner_id=str(uuid.uuid4()),
@@ -750,7 +750,7 @@ def process_patient_discharge(hospital, patient, encounter):
             start_time = encounter['period']['start']
             end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             
-            discharge_dict = generate_discharge(
+            discharge_dict = generate_encounter_discharge(
                 encounter_id=encounter['id'],
                 start_time=start_time,
                 end_time=end_time
@@ -971,7 +971,7 @@ if __name__ == '__main__':
                        help=f'LLM model to use (default: {DEFAULT_LLM_MODEL})')
     parser.add_argument('--no-llm', action='store_true',
                        help='Run simulation without LLM integration')
-    parser.add_argument('--output-fhir', action='store_true',
+    parser.add_argument('--output-fhir', '--fhir-export', action='store_true',
                        help='Output FHIR resources as JSON files')
     
     args = parser.parse_args()

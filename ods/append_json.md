@@ -74,13 +74,13 @@ python3 append_json.py --input patient_6462bf29-68f3-36ca-2f78-ff1ce05d1484.json
 python append_json.py --input ../output_fhir/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
 
 # process all files in a directory
-python append_json.py --input ../output_fhir/session_20241205_220516/patient/ --path ./output --filename patient --format csv
-
-# process all files in a directory
-python append_json.py --input ../output_fhir/session_20241205_220516/encounter_ed_presentation/ --path ./output --filename encounter_ed_presentation --format csv
+python append_json.py --input ../fhir_export/session_20241205_220516/patient/ --path ./output --filename patient --format csv
+python append_json.py --input ../fhir_export/session_20241205_220516/encounter_ed_presentation/ --path ./output --filename encounter_ed_presentation --format csv
+python append_json.py --input ../fhir_export/session_20241205_220516/encounter_discharge/ --path ./output --filename encounter_discharge --format csv
+python append_json.py --input ../fhir_export/session_20241205_220516/condition/ --path ./output --filename condition --format csv
 
 # absolute path
-python append_json.py --input /full/path/to/output_fhir/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
+python append_json.py --input /full/path/to/fhir_export/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
 
 ```
 
