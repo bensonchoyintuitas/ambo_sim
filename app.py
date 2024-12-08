@@ -378,7 +378,7 @@ def generate_discharge_for_patient(hospital, patient):
             start_time = original_encounter['period']['start']
             end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             
-            discharge = generate_discharge(
+            discharge = generate_encounter_discharge(
                 encounter_id=original_encounter['id'],
                 start_time=start_time,
                 end_time=end_time

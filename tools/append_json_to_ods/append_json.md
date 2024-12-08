@@ -62,6 +62,7 @@ python3 append_json.py --input /path/to/json/folder --filename output --path ./o
 - `--format`: Output format, either 'csv' or 'parquet' (default: 'csv')
 - `--path`: Output directory path relative to script location (optional, default: current directory)
 - `--force-all`: Process all files even if they've been processed before (optional)
+- `--continuous SECONDS`: Run continuously with specified interval in seconds until stopped with Ctrl+C (optional)
 
 ### Examples
 Process patient JSON files:
@@ -81,6 +82,9 @@ python append_json.py --input ../fhir_export/session_20241205_220516/condition/ 
 
 # absolute path
 python append_json.py --input /full/path/to/fhir_export/session_20241205_220516/patient/patient_pat-7834.json --path ./output --filename patient --format csv
+
+# Run continuously, checking for new files every 30 seconds
+python append_json.py --input ../fhir_export/session_20241205_220516/patient/ --path ./output --filename patient --format csv --continuous 30
 
 ```
 

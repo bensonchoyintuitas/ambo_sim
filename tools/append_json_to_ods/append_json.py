@@ -5,6 +5,9 @@ from pathlib import Path
 import argparse
 from datetime import datetime
 import os
+import time
+import sys
+from fhir_generators.generate_encounter_discharge import generate_encounter_discharge
 
 def flatten_json(nested_json, prefix=''):
     """
@@ -177,6 +180,8 @@ def main():
     parser.add_argument('--path', help='Output directory path (relative to script)', default='')
     parser.add_argument('--force-all', action='store_true', 
                         help='Process all files even if already in log')
+    parser.add_argument('--continuous', type=int, metavar='SECONDS',
+                        help='Run continuously with specified interval in seconds until Ctrl+C is pressed')
     args = parser.parse_args()
     
     # Get the script's directory
@@ -195,8 +200,23 @@ def main():
     # Add extension if not provided
     if not output_path.suffix:
         output_path = output_path.with_suffix(f'.{args.format}')
-    
-    process_input_path(input_path, output_path, args.format, args.force_all)
+
+    if args.continuous:
+        interval = args.continuous
+        print(f"\nRunning in continuous mode with {interval}-second intervals. Press Ctrl+C to stop.")
+        counter = 1
+        try:
+            while True:
+                print(f"\n=== Run #{counter} ===")
+                process_input_path(input_path, output_path, args.format, args.force_all)
+                print(f"\nCompleted run #{counter}. Waiting {interval} seconds before next run...")
+                time.sleep(interval)
+                counter += 1
+        except KeyboardInterrupt:
+            print("\nContinuous mode stopped by user.")
+            sys.exit(0)
+    else:
+        process_input_path(input_path, output_path, args.format, args.force_all)
 
 if __name__ == "__main__":
     main()
