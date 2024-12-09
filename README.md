@@ -247,9 +247,9 @@ The system generates two distinct types of encounter messages that should be han
 - [-] conform to synthea as base template for fallback
 
 
-# kafka_output
-- [ ] Send data to kafka
-
+# kafka
+- [x] Send data to kafka
+- [x] Consume data from kafka to adls
 
 # Stage 3
 - [ ] refactor to DRY all fallbacks (clickable, automated)
