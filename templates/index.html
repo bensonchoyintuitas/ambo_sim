@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ambulance Simulation</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .ambulance-icon {
+            position: absolute;
+            width: 32px;
+            height: auto;
+            transition: transform 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div class="header-container">
+        <h1>Ambulance Simulation</h1>
+        <button id="resetButton">Reset</button>
+    </div>
+    <div id="content">
+        <div id="simulation-container" style="position: relative;">
+            <canvas id="simulationCanvas" width="800" height="1000"></canvas>
+            <img src="/static/ambulance.png" class="ambulance-icon" id="ambulance-template" style="display: none;">
+        </div>
+        <div class="event-logs">
+            <div class="event-log" id="patient-events">
+                <h3>Patient Events</h3>
+            </div>
+            <div class="event-log" id="ambulance-events">
+                <h3>Ambulance Events</h3>
+            </div>
+            <div class="event-log" id="hospital-events">
+                <h3>Hospital Events</h3>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="/static/script.js"></script>
+
+    <div class="request-counter" style="position: fixed; bottom: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; border-radius: 5px;">
+        <div>LLM Requests: <span id="requests-made">0</span></div>
+        <div>Completed: <span id="requests-completed">0</span></div>
+    </div>
+
+    <script>
+    socket.on('update_request_counts', function(data) {
+        document.getElementById('requests-made').textContent = data.requests_made;
+        document.getElementById('requests-completed').textContent = data.requests_completed;
+    });
+    </script>
+</body>
+</html>

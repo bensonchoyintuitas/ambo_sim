@@ -1,0 +1,9 @@
+.venv
+*.pyc
+*.log
+fhir_export
+ods/output
+tools/append_json_to_ods/output
+tools/append_json_to_ods/.venv
+tools/vis/*.pbix
+tools/kafka_consumer_adls/azure_config.yml
