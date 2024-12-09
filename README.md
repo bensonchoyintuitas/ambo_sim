@@ -104,6 +104,23 @@ The LLM models trade off between speed and quality of generated content. The lla
       - Supports continuous monitoring of export directory
       - Configurable output formats and paths
       - See [append_json.md](tools/append_json_to_ods/append_json.md) for usage details
+    - `/kafka_producer` - Tool for streaming FHIR JSON files to Kafka topics
+      - See [produce_json.md](tools/kafka_producer/produce_json.md) for usage details
+    - `/kafka_consumer_adls` - Tool for consuming FHIR JSON files from Kafka  writing to Azure Data Lake Storage (ADLS)
+      - See [kafka_consumer_adls.md](tools/kafka_consumer_adls/kafka_consumer_adls.md) for usage details
+    - `/purge_topics` - Tool for cleaning up Kafka topics
+      - See [purge_topics.md](tools/purge_topics/purge_topics.md) for usage details
+  - `/infrastructure` - Docker and configuration files for supporting services
+    - `/confluent` - Confluent Platform configuration and setup
+      - Provides local Confluent Platform environment
+      - Includes Control Center for monitoring and management
+      - Configures Schema Registry for AVRO/JSON schemas
+      - Sets up Connect workers for data integration
+      - Manages topic configurations and ACLs
+      - See [confluent/README.md](tools/confluent/README.md) for setup instructions
+
+
+
 
 ## Documentation 
 - `/docs` - Additional documentation files

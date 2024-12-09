@@ -68,19 +68,19 @@ python3 append_json.py --input /path/to/json/folder --filename output --path ./o
 ```bash
 # Run continuously, checking for new files every 30 seconds
 source .venv/bin/activate 
-python3 append_json.py --input ../../fhir_export/session_20241208_205148/patient/ --path ./output --filename patient --format csv --continuous 30
+python3 append_json.py --input ../../fhir_export/session_20241209_210827/patient/ --path ./output --filename patient --format csv --continuous 30
 
 # In a new window
 source .venv/bin/activate 
-python3 append_json.py --input ../../fhir_export/session_20241208_205148/condition/ --path ./output --filename condition --format csv --continuous 30
+python3 append_json.py --input ../../fhir_export/session_20241209_210827/condition/ --path ./output --filename condition --format csv --continuous 30
 
 # In a new window
 source .venv/bin/activate 
-python3 append_json.py --input ../../fhir_export/session_20241208_205148/encounter_ed_presentation/ --path ./output --filename encounter_ed_presentation --format csv --continuous 30
+python3 append_json.py --input ../../fhir_export/session_20241209_210827/encounter_ed_presentation/ --path ./output --filename encounter_ed_presentation --format csv --continuous 30
 
 # In a new window
 source .venv/bin/activate 
-python3 append_json.py --input ../../fhir_export/session_20241208_205148/encounter_discharge/ --path ./output --filename encounter_discharge --format csv --continuous 30
+python3 append_json.py --input ../../fhir_export/session_20241209_210827/encounter_discharge/ --path ./output --filename encounter_discharge --format csv --continuous 30
 ```
 
 
