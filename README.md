@@ -250,6 +250,7 @@ The system generates two distinct types of encounter messages that should be han
 # kafka
 - [x] Send data to kafka
 - [x] Consume data from kafka to adls
+- [x] Consume Include partitioning in the file paths (e.g., /landing/yyyy/MM/dd/HH/
 
 # Stage 3
 - [ ] refactor to DRY all fallbacks (clickable, automated)

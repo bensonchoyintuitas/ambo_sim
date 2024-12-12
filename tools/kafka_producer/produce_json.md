@@ -13,7 +13,13 @@ A Python utility that produces JSON files to Kafka topics. The script can proces
 ## Prerequisites
 
 ```bash
-source .venv/bin/activate 
+# Create and activate virtual environment
+python3 -m venv .venv
+
+# For Linux/MacOS
+source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
@@ -58,10 +64,10 @@ python3 produce_json.py --input /path/to/json/folder --output-topic my-topic --c
 source .venv/bin/activate 
 
 # In separate terminal windows:
-python3 produce_json.py --input ../../fhir_export/session_20241209_210827/patient/ --output-topic patient --continuous 30
-python3 produce_json.py --input ../../fhir_export/session_20241209_210827/condition/ --output-topic condition --continuous 30
-python3 produce_json.py --input ../../fhir_export/session_20241209_210827/encounter_ed_presentation/ --output-topic encounter_ed_presentation --continuous 30
-python3 produce_json.py --input ../../fhir_export/session_20241209_210827/encounter_discharge/ --output-topic encounter_discharge --continuous 30
+python3 produce_json.py --input ../../fhir_export/session_20241212_205310/patient/ --output-topic patient --continuous 30
+python3 produce_json.py --input ../../fhir_export/session_20241212_205310/condition/ --output-topic condition --continuous 30
+python3 produce_json.py --input ../../fhir_export/session_20241212_205310/encounter_ed_presentation/ --output-topic encounter_ed_presentation --continuous 30
+python3 produce_json.py --input ../../fhir_export/session_20241212_205310/encounter_discharge/ --output-topic encounter_discharge --continuous 30
 ```
 
 ## Logging

@@ -92,9 +92,21 @@ def consume_from_kafka(topic, consumer_group, azure_storage_account_name, azure_
         for message in consumer:
             message_count += 1
             data = message.value  # Already decoded due to value_deserializer
-            timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+            
+            # Get current timestamp and create date-based partition folders
+            current_time = datetime.now()
+            date_partition = os.path.join(
+                str(current_time.year),
+                f"{current_time.month:02d}",
+                f"{current_time.day:02d}"
+            )
+            
+            # Create file name with timestamp
+            timestamp = current_time.strftime("%Y%m%d%H%M%S%f")
             file_name = f"{topic}_{timestamp}.json"
-            file_path = os.path.join(topic_folder_path, file_name)
+            
+            # Combine all path components
+            file_path = os.path.join(topic_folder_path, date_partition, file_name)
             
             # Convert data to bytes if it isn't already
             if isinstance(data, str):
