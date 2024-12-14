@@ -64,10 +64,10 @@ python3 produce_json.py --input /path/to/json/folder --output-topic my-topic --c
 source .venv/bin/activate 
 
 # In separate terminal windows:
-python3 produce_json.py --input ../../fhir_export/session_20241212_205310/patient/ --output-topic patient --continuous 30
-python3 produce_json.py --input ../../fhir_export/session_20241212_205310/condition/ --output-topic condition --continuous 30
-python3 produce_json.py --input ../../fhir_export/session_20241212_205310/encounter_ed_presentation/ --output-topic encounter_ed_presentation --continuous 30
-python3 produce_json.py --input ../../fhir_export/session_20241212_205310/encounter_discharge/ --output-topic encounter_discharge --continuous 30
+python3 produce_json.py --input ../../fhir_export/session_20241214_212330/patient/ --output-topic patient --continuous 30
+python3 produce_json.py --input ../../fhir_export/session_20241214_212330/condition/ --output-topic condition --continuous 30
+python3 produce_json.py --input ../../fhir_export/session_20241214_212330/encounter_ed_presentation/ --output-topic encounter_ed_presentation --continuous 30
+python3 produce_json.py --input ../../fhir_export/session_20241214_212330/encounter_discharge/ --output-topic encounter_discharge --continuous 30
 ```
 
 ## Logging

@@ -246,11 +246,21 @@ The system generates two distinct types of encounter messages that should be han
 - [x] validate consistent fhir format using fallback when using clickable patient
 - [-] conform to synthea as base template for fallback
 
-
 # kafka
 - [x] Send data to kafka
 - [x] Consume data from kafka to adls
 - [x] Consume Include partitioning in the file paths (e.g., /landing/yyyy/MM/dd/HH/
+
+# databricks
+- [x] ingest using auto loader
+
+
+# Automation
+- [ ] build one-click runner to 
+  - [ ] run synthea
+  - [ ] run confluent
+  - [ ] run kafka producer
+  - [ ] run kafka consumer
 
 # Stage 3
 - [ ] refactor to DRY all fallbacks (clickable, automated)
