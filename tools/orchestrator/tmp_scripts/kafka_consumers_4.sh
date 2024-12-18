@@ -1,5 +1,5 @@
 #!/bin/bash
-echo 'Date: 2024-12-18 16:14:11.006964'
+echo 'Date: 2024-12-18 16:23:26.159279'
 echo 'Script: ./tmp_scripts/kafka_consumers_4.sh'
 cd /mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls
 source .venv/bin/activate

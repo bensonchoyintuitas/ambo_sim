@@ -44,7 +44,7 @@ This document outlines the sequential steps for running the complete ambulance s
 6. **Kafka Consumers**
    - Launches Kafka consumer services
    - Waits 60 seconds for consumer initialization
-   - Default is --auto-offset earliest --reset-offset for the default consumer group which means it will start from the earliest offset and reset the offset to the earliest offset everytime this is run (risk of dupes downstream if not combined with a purge).
+   - Default is --auto-offset earliest which means it will continue where it left off for the default consumer group (no dupes).
 
 At this point, data is being produced and consumed into the nominated ADLS location:
 

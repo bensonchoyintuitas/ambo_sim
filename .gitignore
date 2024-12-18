@@ -1,6 +1,7 @@
 .venv
 *.pyc
 *.log
+tools/orchestrator/tmp_scripts/*
 fhir_export
 ods/output
 tools/append_json_to_ods/output
