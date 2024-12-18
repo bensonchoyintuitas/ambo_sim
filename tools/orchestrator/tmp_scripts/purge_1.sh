@@ -1,5 +1,5 @@
 #!/bin/bash
-echo 'Date: 2024-12-18 15:59:25.743806'
+echo 'Date: 2024-12-18 21:00:52.219118'
 echo 'Script: ./tmp_scripts/purge_1.sh'
 cd /mnt/d/Work/Intuitas/repo/ambo_sim/tools/purge_topics
 source .venv/bin/activate

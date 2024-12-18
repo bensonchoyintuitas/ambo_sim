@@ -1,5 +1,5 @@
 #!/bin/bash
-echo 'Date: 2024-12-18 16:01:30.996952'
+echo 'Date: 2024-12-18 21:01:57.949963'
 echo 'Script: ./tmp_scripts/ambo_sim_1.sh'
 cd /mnt/d/Work/Intuitas/repo/ambo_sim
 source .venv/bin/activate

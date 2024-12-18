@@ -29,7 +29,15 @@ pip install -r requirements.txt
 
 
 
-# Run
+# Run 
+## Run the end to end orchestrator
+```bash
+cd ./tools/orchestrator
+source .venv/bin/activate 
+python3 orchestrator.py end_to_end.yml
+```
+
+## Run the ambulance simulator
 1. Run the Synthea API (optional)
 https://github.com/bensonchoyintuitas/synthea_api
 2. Run the ambo sim

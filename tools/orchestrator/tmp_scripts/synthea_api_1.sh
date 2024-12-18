@@ -1,5 +1,5 @@
 #!/bin/bash
-echo 'Date: 2024-12-18 16:00:37.605161'
+echo 'Date: 2024-12-18 21:01:52.612954'
 echo 'Script: ./tmp_scripts/synthea_api_1.sh'
 cd /mnt/d/Work/Intuitas/repo/synthea_api
 source .venv/bin/activate
