@@ -13,13 +13,7 @@ pip install -r requirements.txt
 <!-- linux -->
 ```bash
 source .venv/bin/activate
-python3 main.py ./topics_to_delete.txt
-python3 main.py /mnt/d/Work/Intuitas/repo/intuitas_blueprint/processors/streaming/synthea_processor/synthea_processor__new_topics.log
-python3 main.py /mnt/d/Work/Intuitas/repo/intuitas_blueprint/processors/streaming/fhir_normaliser/fhir_normaliser__new_topics.log
-
+python3 purge_topics.py ./topics_to_delete.txt
 
 ```
-processors\streaming\synthea_processor\synthea_processor__new_topics.log
-# Status
-Dev - not added to end-to-end yet
 

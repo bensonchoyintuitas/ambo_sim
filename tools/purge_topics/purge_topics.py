@@ -60,7 +60,7 @@ def main(filename):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python main.py <path_to_csv_file>")
+        print("Usage: python purge_topics.py <path_to_csv_file>")
         sys.exit(1)
     file_path = sys.argv[1]
     main(file_path)

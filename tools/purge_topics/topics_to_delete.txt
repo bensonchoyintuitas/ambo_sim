@@ -1,1 +1,4 @@
-FHIR__Synthea__json
+patient
+encounter_discharge
+encounter_ed_presentation
+condition
