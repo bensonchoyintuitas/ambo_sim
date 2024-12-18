@@ -1,0 +1,29 @@
+# run kafka_producer 
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_producer"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up syntha api\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20241214_212330/patient/ --output-topic patient --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/synthea_api"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up syntha api\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20241214_212330/condition/ --output-topic condition --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/synthea_api"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up syntha api\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20241214_212330/encounter_discharge/ --output-topic encounter_discharge --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/synthea_api"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up syntha api\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20241214_212330/encounter_ed_presentation/ --output-topic encounter_ed_presentation --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+
+
+
+

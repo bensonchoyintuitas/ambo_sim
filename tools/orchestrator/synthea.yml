@@ -1,0 +1,7 @@
+# run syntha api (optional)
+- wd: "/mnt/d/Work/Intuitas/repo/synthea_api"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up synthea api\")'"
+    - 'python3 api.py'
+    - 'python3 -c "import time; time.sleep(60)"'
