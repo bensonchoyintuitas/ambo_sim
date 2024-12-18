@@ -13,7 +13,7 @@ pip install -r requirements.txt
 <!-- linux -->
 ```bash
 source .venv/bin/activate
-python3 purge_topics.py ./topics_to_delete.txt
+python3 purge_topics.py --file-path ./topics_to_delete.txt --bootstrap-servers localhost:9092
 
 ```
 

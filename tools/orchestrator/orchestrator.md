@@ -1,13 +1,10 @@
 # Introduction 
 This application acts as a generic orchestrator that runs any python command in any type of terminal as a parallel thread.
 
-## generate__ helpers
+##  helpers
 Some helpers have been created to automate generation of scripts
-- processors__fhir_normaliser__helper.py
-- consumers__parquet_landing__helper.py
+- [kafka_producers__update_session_timestamp.md](kafka_producers__update_session_timestamp.md)
 
-# Todo
-- [data__duckdb_delta_warehouse] Improve overall sequencing dependency with dbt and delta
 
 # Requirements
 - latest WSL2 with gui support (xterm)

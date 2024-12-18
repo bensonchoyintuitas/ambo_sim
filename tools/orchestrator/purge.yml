@@ -3,5 +3,5 @@
   env: "source .venv/bin/activate"
   cmd:
     - "python3 -c 'print(\"Firing up purge topics\")'"
-    - 'python3 purge_topics.py ./topics_to_delete.txt'
+    - 'python3 purge_topics.py --file-path ./topics_to_delete.txt --bootstrap-servers localhost:9092'
     - 'python3 -c "import time; time.sleep(60)"'
