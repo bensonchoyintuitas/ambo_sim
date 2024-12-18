@@ -5,9 +5,9 @@
     - "python3 -c 'print(\"Firing up infrastructure\")'"
     - 'python3 orchestrator.py infrastructure.yml'
     - 'python3 -c "import time; time.sleep(60)"'
-    - "python3 -c 'print(\"Firing up purge_topics.py\")'"
-    - 'python3 orchestrator.py purge.yml'
-    - 'python3 -c "import time; time.sleep(60)"'
+    # - "python3 -c 'print(\"Firing up purge_topics.py\")'"
+    # - 'python3 orchestrator.py purge.yml'
+    # - 'python3 -c "import time; time.sleep(60)"'
     - "python3 -c 'print(\"Firing up synthea producer\")'"
     - 'python3 orchestrator.py synthea_api.yml'
     - 'python3 -c "import time; time.sleep(5)"'
