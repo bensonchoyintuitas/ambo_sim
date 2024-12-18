@@ -99,10 +99,7 @@ The LLM models trade off between speed and quality of generated content. The lla
     - Contains patient, condition, encounter resources
     - Excluded from git via .gitignore
   - `/tools` - Utility scripts and data processing tools
-    - `/append_json_to_ods` - Tool for converting FHIR JSON to CSV/Parquet 
-      - Processes output files for analysis
-      - Supports continuous monitoring of export directory
-      - Configurable output formats and paths
+    - `/append_json_to_ods` - Tool for converting FHIR JSON to CSV/Parquet locally
       - See [append_json.md](tools/append_json_to_ods/append_json.md) for usage details
     - `/kafka_producer` - Tool for streaming FHIR JSON files to Kafka topics
       - See [produce_json.md](tools/kafka_producer/produce_json.md) for usage details
@@ -110,13 +107,11 @@ The LLM models trade off between speed and quality of generated content. The lla
       - See [kafka_consumer_adls.md](tools/kafka_consumer_adls/kafka_consumer_adls.md) for usage details
     - `/purge_topics` - Tool for cleaning up Kafka topics
       - See [purge_topics.md](tools/purge_topics/purge_topics.md) for usage details
+    - `/orchestrator` - Tool for running multiple services in parallel
+      - See [orchestrator.md](tools/orchestrator/orchestrator.md) for usage details
+      - See [end_to_end.md](tools/orchestrator/end_to_end.md) for the full workflow for ambo_sim
   - `/infrastructure` - Docker and configuration files for supporting services
     - `/confluent` - Confluent Platform configuration and setup
-      - Provides local Confluent Platform environment
-      - Includes Control Center for monitoring and management
-      - Configures Schema Registry for AVRO/JSON schemas
-      - Sets up Connect workers for data integration
-      - Manages topic configurations and ACLs
       - See [confluent/README.md](tools/confluent/README.md) for setup instructions
 
 

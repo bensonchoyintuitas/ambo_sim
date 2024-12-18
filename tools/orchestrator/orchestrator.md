@@ -1,7 +1,9 @@
-# Introduction 
+# Orchestrator 
 This application acts as a generic orchestrator that runs any python command in any type of terminal as a parallel thread.
 
-##  helpers
+Refer to [end_to_end.yml](end_to_end.yml) for the full workflow for ambo_sim.
+
+## Helpers
 Some helpers have been created to automate generation of scripts
 - [kafka_producers__update_session_timestamp.md](kafka_producers__update_session_timestamp.md)
 

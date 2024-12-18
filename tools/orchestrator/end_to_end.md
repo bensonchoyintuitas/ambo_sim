@@ -44,6 +44,36 @@ This document outlines the sequential steps for running the complete ambulance s
 6. **Kafka Consumers**
    - Launches Kafka consumer services
    - Waits 60 seconds for consumer initialization
+   - Default is --auto-offset earliest --reset-offset for the default consumer group which means it will start from the earliest offset and reset the offset to the earliest offset everytime this is run (risk of dupes downstream if not combined with a purge).
+
+At this point, data is being produced and consumed into the nominated ADLS location:
+
+1. **Verify Data Flow**
+   - Check ADLS container 'dev' under path 'bronze/landing/kafka__local/'
+   - Confirm new files are being created for each topic:
+     - patient
+     - condition 
+     - encounter_discharge
+     - encounter_ed_presentation
+
+2. **Start Databricks Processing**
+   - Log into Databricks workspace
+   - Navigate to Workflows section
+   - Locate and start the data processing workflow:
+     - Navigate to "Workflows" > "Jobs"
+     - Find workflow: `health_lakehouse__engineering__databricks__bronze_landing_to_ods`
+     - Click "Run Now" to start the job
+   
+   - Monitor workflow execution:
+     - Watch the job progress in the "Runs" tab
+     - Check for any errors or failures
+     - Verify all tasks complete successfully
+   
+   - View and validate results in Bronze Dashboard:
+     - Open [Ambo-sim BRONZE.ODS Summary Dashboard](https://adb-1006248599320535.15.azuredatabricks.net/sql/dashboardsv3/01efba111f9b12bca1b432ad4a09bf20?o=1006248599320535)
+
+
+
 
 ## Note
 There is a commented-out section for topic purging that can be uncommented if needed:

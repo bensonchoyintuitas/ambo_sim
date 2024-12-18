@@ -1,0 +1,8 @@
+#!/bin/bash
+echo 'Date: 2024-12-18 16:00:37.605161'
+echo 'Script: ./tmp_scripts/synthea_api_1.sh'
+cd /mnt/d/Work/Intuitas/repo/synthea_api
+source .venv/bin/activate
+python3 -c 'print("Firing up synthea api")'
+python3 api.py
+python3 -c "import time; time.sleep(60)"
