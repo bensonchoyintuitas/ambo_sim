@@ -34,6 +34,7 @@ pip install -r requirements.txt
 ```bash
 cd ./tools/orchestrator
 source .venv/bin/activate 
+# make sure docker is running
 python3 orchestrator.py end_to_end.yml
 ```
 
