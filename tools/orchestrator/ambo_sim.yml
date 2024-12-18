@@ -1,0 +1,7 @@
+# run syntha api (optional)
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up ambo_sim --llm-model llama3.1:8b --fhir-export\")'"
+    - 'python3 app.py --llm-model llama3.1:8b --fhir-export'
+    - 'python3 -c "import time; time.sleep(60)"'

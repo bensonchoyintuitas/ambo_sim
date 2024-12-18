@@ -1,0 +1,6 @@
+# start infrastructure
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/infrastructure/confluent"
+  cmd:
+    - "python3 -c 'print(\"Firing up confluent\")'"
+    - 'python3 -c "import time; time.sleep(1)"'
+    - 'docker-compose up -d'
