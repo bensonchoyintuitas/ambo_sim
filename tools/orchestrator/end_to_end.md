@@ -43,6 +43,7 @@ This document outlines the sequential steps for running the complete ambulance s
 
 6. **Kafka Consumers**
    - Launches Kafka consumer services
+   - writes either to dev or prod depending on the kafka_consumers.yml file
    - Waits 60 seconds for consumer initialization
    - Default is --auto-offset earliest which means it will continue where it left off for the default consumer group (no dupes).
 

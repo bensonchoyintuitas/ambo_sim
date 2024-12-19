@@ -1,0 +1,25 @@
+# start end to end
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/orchestrator"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up infrastructure\")'"
+    - 'python3 orchestrator.py infrastructure.yml'
+    - 'python3 -c "import time; time.sleep(60)"'
+    # - "python3 -c 'print(\"Firing up purge_topics.py\")'"
+    # - 'python3 orchestrator.py purge.yml'
+    # - 'python3 -c "import time; time.sleep(60)"'
+    - "python3 -c 'print(\"Firing up synthea producer\")'"
+    - 'python3 orchestrator.py synthea_api.yml'
+    - 'python3 -c "import time; time.sleep(5)"'
+    - "python3 -c 'print(\"Firing up ambo_sim\")'"
+    - 'python3 orchestrator.py ambo_sim.yml'
+    - 'python3 -c "import time; time.sleep(30)"'
+    - "python3 -c 'print(\"Updating session timestamp in kafka_producers.yml\")'"
+    - 'python3 kafka_producers__update_session_timestamp.py --yaml-file /mnt/d/Work/Intuitas/repo/ambo_sim/tools/orchestrator/kafka_producers.yml --sessions-root /mnt/d/Work/Intuitas/repo/ambo_sim/fhir_export'
+    - 'python3 -c "import time; time.sleep(10)"'
+    - "python3 -c 'print(\"Firing up kafka_producers\")'"
+    - 'python3 orchestrator.py kafka_producers.yml'
+    - 'python3 -c "import time; time.sleep(60)"'
+    - "python3 -c 'print(\"Firing up kafka_consumers\")'"
+    - 'python3 orchestrator.py kafka_consumers__prod.yml'
+    - 'python3 -c "import time; time.sleep(60)"'

@@ -21,5 +21,5 @@
     - 'python3 orchestrator.py kafka_producers.yml'
     - 'python3 -c "import time; time.sleep(60)"'
     - "python3 -c 'print(\"Firing up kafka_consumers\")'"
-    - 'python3 orchestrator.py kafka_consumers.yml'
+    - 'python3 orchestrator.py kafka_consumers__dev.yml'
     - 'python3 -c "import time; time.sleep(60)"'

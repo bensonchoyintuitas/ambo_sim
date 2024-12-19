@@ -29,8 +29,9 @@ python3 main.py [command yaml]
 <!-- linux -->
 ```bash
 source .venv/bin/activate
-python3 orchestrator.py purge.yml (optional)
-python3 orchestrator.py 'end_to_end.yml' 
+python3 orchestrator.py purge.yml #(optional)
+python3 orchestrator.py 'end_to_end__dev.yml'  #dev 
+python3 orchestrator.py 'end_to_end__prod.yml'  #prod
 ```
 
 <!-- example -->

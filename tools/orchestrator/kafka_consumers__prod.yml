@@ -1,0 +1,26 @@
+# run kafka_producer 
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up patient consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic patient --container prod --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up encounter_ed_presentation consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic encounter_ed_presentation --container prod --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up encounter_discharge consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic encounter_discharge --container prod --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up condition consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic condition --container prod --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
+
