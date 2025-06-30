@@ -22,6 +22,9 @@ pip install -r requirements.txt
 sudo apt-get install xfonts-base
 sudo apt-get install xterm
 ```
+
+ensure all sub projects have .venv setup
+
 # Running
 <!-- example -->
 python3 main.py [command yaml]

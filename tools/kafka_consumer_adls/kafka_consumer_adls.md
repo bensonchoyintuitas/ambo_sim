@@ -114,3 +114,11 @@ python3 kafka_consumer_adls.py --topic patient \
                             --auto-offset earliest \
                             --reset-offset
 ```
+
+python3 kafka_consumer_adls.py --topic patient \
+                            --container prod \
+                            --path bronze/landing/kafka__local/ \
+                            --consumer-group DefaultConsumerGroup \
+                            --bootstrap-server localhost:9092 \
+                            --auto-offset earliest \
+                            --reset-offset
