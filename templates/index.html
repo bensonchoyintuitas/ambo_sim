@@ -209,9 +209,13 @@
           for (const v of positions) box.expandByPoint(v);
           const center = new THREE.Vector3(); box.getCenter(center);
           const size = new THREE.Vector3(); box.getSize(size);
-          const maxDim = Math.max(size.x, size.z);
           const fov = engineRef.current.camera.fov * (Math.PI / 180);
-          const dist = (maxDim * 0.65) / Math.tan(fov / 2);
+          const aspect = engineRef.current.renderer.domElement.clientWidth / engineRef.current.renderer.domElement.clientHeight;
+          const halfX = size.x / 2;
+          const halfZ = size.z / 2;
+          const distZ = halfZ / Math.tan(fov / 2);
+          const distX = halfX / (Math.tan(fov / 2) * aspect);
+          const dist = Math.max(distX, distZ) * 1.15; // add margin
           const dir = new THREE.Vector3(1, 1.2, 1).normalize();
           const newPos = center.clone().add(dir.multiplyScalar(dist));
           engineRef.current.camera.position.copy(newPos);
@@ -518,7 +522,7 @@
         }
       }, [state]);
 
-      return <div ref={containerRef} className="stage card" />;
+      return <div ref={containerRef} className="scene-container" />;
     }
 
     function LogCard({ title, emoji, items }) {
