@@ -78,7 +78,7 @@
 
       const WORLD_SCALE = 0.06;
       const BASE_FRUSTUM = 30; // world units visible vertically in ortho camera before zoom
-      const TARGET_PAN_OFFSET = new THREE.Vector3(0, 0, -0.8); // slight downward pan
+      const TARGET_PAN_OFFSET = new THREE.Vector3(-1.2, 0, -0.8); // shift slightly left and down
       const toWorld = (x, y) => ({ x: (x - 400) * WORLD_SCALE, z: (y - 325) * WORLD_SCALE });
 
       useEffect(() => {
@@ -243,10 +243,12 @@
           const a = engineRef.current.renderer.domElement.clientWidth / engineRef.current.renderer.domElement.clientHeight;
           const viewWidth = BASE_FRUSTUM * a;
           const viewHeight = BASE_FRUSTUM;
-          const margin = 1.25; // add margins so content isn't at edges
-          const zoomX = viewWidth / (size.x * margin || 1);
-          const zoomY = viewHeight / (size.z * margin || 1);
-          engineRef.current.camera.zoom = Math.min(zoomX, zoomY);
+          // add more right margin so sidebar doesn't overlap, and a small overall zoom-out
+          const marginX = 1.45; // extra space on right
+          const marginY = 1.25;
+          const zoomX = viewWidth / (size.x * marginX || 1);
+          const zoomY = viewHeight / (size.z * marginY || 1);
+          engineRef.current.camera.zoom = Math.min(zoomX, zoomY) * 0.96;
           engineRef.current.camera.updateProjectionMatrix();
           // Keep camera on isometric ray through center
           const dir = engineRef.current.camera.position.clone().sub(engineRef.current.controls.target).normalize();
