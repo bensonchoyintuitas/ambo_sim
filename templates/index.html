@@ -78,6 +78,7 @@
 
       const WORLD_SCALE = 0.06;
       const BASE_FRUSTUM = 30; // world units visible vertically in ortho camera before zoom
+      const TARGET_PAN_OFFSET = new THREE.Vector3(0, 0, -0.8); // slight downward pan
       const toWorld = (x, y) => ({ x: (x - 400) * WORLD_SCALE, z: (y - 325) * WORLD_SCALE });
 
       useEffect(() => {
@@ -237,6 +238,7 @@
           const box = new THREE.Box3();
           for (const v of positions) box.expandByPoint(v);
           const center = new THREE.Vector3(); box.getCenter(center);
+          center.add(TARGET_PAN_OFFSET);
           const size = new THREE.Vector3(); box.getSize(size);
           const a = engineRef.current.renderer.domElement.clientWidth / engineRef.current.renderer.domElement.clientHeight;
           const viewWidth = BASE_FRUSTUM * a;
