@@ -43,6 +43,7 @@ USE_LLM = True  # Default value, will be updated by command line args
 OUTPUT_FHIR = False  # Default value, will be updated by command line args
 FHIR_OUTPUT_DIR = "fhir_export"  # Base directory for FHIR outputs
 SESSION_DIR = None  # Will be set at runtime if OUTPUT_FHIR is True
+HOSPITAL_WAITING_CAPACITY = 6  # Maximum patients allowed in a hospital waiting room
 
 class Condition:
     def __init__(self, id, clinical_status, verification_status, severity, category, 
@@ -127,6 +128,7 @@ class Ambulance:
         self.is_available = True
         self.state = 'green'  # green means available
         self.patient = None  # Store the entire Patient object
+        self.queue_hospital_id = None  # If ramping, which hospital we're queued at
 
     def move_to(self, target_x, target_y):
         if self.x < target_x:
@@ -569,11 +571,23 @@ def move_ambulances():
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
                         patient = next((p for p in patients if p.id == ambulance.patient.id), None)
                         if patient:
-                            nearest_hospital.add_patient_to_waiting(patient)
-                        ambulance.is_available = True
-                        ambulance.state = 'green'
-                        ambulance.target = None
-                        ambulance.patient = None
+                            # If waiting room has capacity, drop patient; otherwise ramp outside
+                            if len(nearest_hospital.waiting) < HOSPITAL_WAITING_CAPACITY:
+                                nearest_hospital.add_patient_to_waiting(patient)
+                                ambulance.is_available = True
+                                ambulance.state = 'green'
+                                ambulance.target = None
+                                ambulance.patient = None
+                                ambulance.queue_hospital_id = None
+                            else:
+                                # Ramp: keep patient on board, mark ambulance waiting outside
+                                ambulance.is_available = False
+                                ambulance.state = 'orange'
+                                ambulance.queue_hospital_id = nearest_hospital.id
+                                log_event(
+                                    f"Ambulance {ambulance.id} waiting to offload at Hospital {nearest_hospital.id} (waiting full)",
+                                    event_type='ambulance'
+                                )
 
         socketio.emit('update_state', get_state())
         time.sleep(0.05)  # Reduce the sleep time to make the simulation feel faster
@@ -586,7 +600,7 @@ def find_nearest_hospital(x, y):
 def get_state():
     """Returns the state of ambulances, houses, and hospitals."""
     return {
-        'ambulances': [{'id': a.id, 'x': a.x, 'y': a.y, 'state': a.state, 'patient_id': a.patient.id if a.patient else None} for a in ambulances],
+        'ambulances': [{'id': a.id, 'x': a.x, 'y': a.y, 'state': a.state, 'patient_id': a.patient.id if a.patient else None, 'queue_hospital_id': a.queue_hospital_id} for a in ambulances],
         'houses': [
             {
                 'id': h.id,
@@ -796,6 +810,17 @@ def manage_hospital_queues():
                                 hospital, 
                                 discharged_patient
                             )
+
+                # After moving queues, try to offload any ramped ambulances if capacity is available
+                ramped = [a for a in ambulances if a.state == 'orange' and a.queue_hospital_id == hospital.id and a.patient]
+                while len(hospital.waiting) < HOSPITAL_WAITING_CAPACITY and ramped:
+                    amb = ramped.pop(0)
+                    hospital.add_patient_to_waiting(amb.patient)
+                    log_event(f"Ambulance {amb.id} offloaded patient {amb.patient.name} at Hospital {hospital.id}", event_type='ambulance')
+                    amb.is_available = True
+                    amb.state = 'green'
+                    amb.patient = None
+                    amb.queue_hospital_id = None
 
         socketio.emit('update_state', get_state())
         time.sleep(1)

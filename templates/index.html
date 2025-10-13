@@ -4,52 +4,573 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ambulance Simulation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
     <style>
-        .ambulance-icon {
-            position: absolute;
-            width: 32px;
-            height: auto;
-            transition: transform 0.3s;
-        }
+        .ambulance-icon { position: absolute; width: 32px; height: auto; transition: transform 0.3s; }
     </style>
 </head>
 <body>
-    <div class="header-container">
-        <h1>Ambulance Simulation</h1>
-        <button id="resetButton">Reset</button>
-    </div>
-    <div id="content">
-        <div id="simulation-container" style="position: relative;">
-            <canvas id="simulationCanvas" width="800" height="1000"></canvas>
-            <img src="/static/ambulance.png" class="ambulance-icon" id="ambulance-template" style="display: none;">
-        </div>
-        <div class="event-logs">
-            <div class="event-log" id="patient-events">
-                <h3>Patient Events</h3>
-            </div>
-            <div class="event-log" id="ambulance-events">
-                <h3>Ambulance Events</h3>
-            </div>
-            <div class="event-log" id="hospital-events">
-                <h3>Hospital Events</h3>
-            </div>
-        </div>
-    </div>
+    <div id="root"></div>
+
+    <img src="/static/ambulance.png" class="ambulance-icon" id="ambulance-template" style="display:none;">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <script src="/static/script.js"></script>
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <div class="request-counter" style="position: fixed; bottom: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; border-radius: 5px;">
-        <div>LLM Requests: <span id="requests-made">0</span></div>
-        <div>Completed: <span id="requests-completed">0</span></div>
-    </div>
+    {% raw %}
+    <script type="text/babel">
+    const { useEffect, useRef, useState, useMemo } = React;
 
-    <script>
-    socket.on('update_request_counts', function(data) {
-        document.getElementById('requests-made').textContent = data.requests_made;
-        document.getElementById('requests-completed').textContent = data.requests_completed;
-    });
+    const EMOJI_FONT_SIZE = '32px';
+    const TEXT_FONT_SIZE = '14px';
+    const HOUSE_SIZE = 10;
+    const HOSPITAL_SIZE = 20;
+    const EMOJI_OFFSET_X = 5;
+    const EMOJI_OFFSET_Y = 15;
+    const TEXT_OFFSET_X = -20;
+    const TEXT_OFFSET_Y = 30;
+    const AMBULANCE_PATIENT_OFFSET_Y = 40;
+
+    function useSocket() {
+      const [state, setState] = useState({ ambulances: [], houses: [], hospitals: [] });
+      const [patientLog, setPatientLog] = useState([]);
+      const [ambulanceLog, setAmbulanceLog] = useState([]);
+      const [hospitalLog, setHospitalLog] = useState([]);
+      const [requests, setRequests] = useState({ started: 0, completed: 0 });
+      const socketRef = useRef(null);
+
+      useEffect(() => {
+        socketRef.current = io();
+
+        socketRef.current.on('update_state', (s) => setState(s));
+        socketRef.current.on('update_patient_log', (log) => setPatientLog(log));
+        socketRef.current.on('update_ambulance_log', (log) => setAmbulanceLog(log));
+        socketRef.current.on('update_hospital_log', (log) => setHospitalLog(log));
+        socketRef.current.on('update_request_counts', (data) => {
+          setRequests({ started: data.requests_made, completed: data.requests_completed });
+        });
+
+        return () => {
+          socketRef.current && socketRef.current.disconnect();
+        };
+      }, []);
+
+      const emit = useMemo(() => ({
+        reset: () => socketRef.current?.emit('reset_simulation'),
+        createPatientAt: (houseId) => socketRef.current?.emit('create_patient_at_house', { house_id: houseId }),
+      }), []);
+
+      return { state, patientLog, ambulanceLog, hospitalLog, requests, emit };
+    }
+
+    function IsometricScene({ state, onHouseClick }) {
+      const containerRef = useRef(null);
+      const objectsRef = useRef({ houses: new Map(), hospitals: new Map(), hospitalGroups: new Map(), hospitalLabels: new Map(), ambulances: new Map(), patientMeshes: new Map() });
+      const engineRef = useRef({ scene: null, camera: null, renderer: null, raycaster: null, controls: null, clock: null });
+      const framedRef = useRef(false);
+
+      const WORLD_SCALE = 0.06;
+      const toWorld = (x, y) => ({ x: (x - 400) * WORLD_SCALE, z: (y - 325) * WORLD_SCALE });
+
+      useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0b0f17);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const size = () => ({ w: container.clientWidth || 800, h: container.clientHeight || 650 });
+        const { w: initW, h: initH } = size();
+        renderer.setSize(initW, initH);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.domElement.className = 'sim-canvas';
+        container.appendChild(renderer.domElement);
+
+        const camera = new THREE.PerspectiveCamera(50, initW/initH, 0.1, 2000);
+        camera.position.set(28, 32, 28); // slightly wider framing
+        camera.lookAt(0, 0, 0);
+
+        // Orbit controls
+        let controls;
+        try {
+          controls = new (THREE.OrbitControls || function(){}) (camera, renderer.domElement);
+        } catch (e) {
+          controls = { update: () => {}, target: new THREE.Vector3() };
+          console.warn('OrbitControls not available; proceeding without interactive controls');
+        }
+        if (controls) {
+          controls.enableDamping = true;
+          controls.dampingFactor = 0.05;
+          controls.rotateSpeed = 0.6;
+          controls.zoomSpeed = 0.8;
+          controls.minDistance = 8;
+          controls.maxDistance = 120;
+          controls.enablePan = true;
+          if (typeof controls.update !== 'function') controls.update = () => {};
+          if (!controls.target) controls.target = new THREE.Vector3();
+        }
+
+        // Lights
+        const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+        const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+        dir.position.set(10, 20, 10);
+        scene.add(ambient, dir);
+
+        // Ground grid
+        const grid = new THREE.GridHelper(80, 80, 0x334155, 0x1f2937);
+        grid.position.y = -0.01;
+        scene.add(grid);
+
+        // Slight fog for depth
+        scene.fog = new THREE.Fog(0x0b0f17, 60, 120);
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        const onPointer = (e) => {
+          const rect = renderer.domElement.getBoundingClientRect();
+          mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          raycaster.setFromCamera(mouse, camera);
+          const houseMeshes = Array.from(objectsRef.current.houses.values());
+          const hits = raycaster.intersectObjects(houseMeshes, false);
+          if (hits.length) {
+            const mesh = hits[0].object;
+            const { id, hasPatient } = mesh.userData;
+            if (!hasPatient) onHouseClick(id);
+          }
+        };
+        renderer.domElement.addEventListener('pointerdown', onPointer);
+
+        engineRef.current = { scene, camera, renderer, raycaster, controls, clock: new THREE.Clock() };
+
+        // Resize handling
+        const onResize = () => {
+          const { w, h } = size();
+          renderer.setSize(w, h);
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+        };
+        window.addEventListener('resize', onResize);
+
+        let rafId = null;
+        const animate = () => {
+          rafId = requestAnimationFrame(animate);
+          // Smoothly move ambulances toward their target positions
+          for (const [id, obj] of objectsRef.current.ambulances) {
+            if (!obj.userData.target) continue;
+            obj.position.lerp(obj.userData.target, 0.15);
+            if (obj.userData.carry && obj.userData.carry instanceof THREE.Object3D) {
+              const offset = new THREE.Vector3(0, 0.25, 0);
+              const desired = obj.position.clone().add(offset);
+              obj.userData.carry.position.lerp(desired, 0.15);
+            }
+          }
+          // Smoothly move patient tokens toward their targets
+          for (const [pid, mesh] of objectsRef.current.patientMeshes) {
+            if (mesh.userData.target) mesh.position.lerp(mesh.userData.target, 0.15);
+          }
+          if (engineRef.current.controls && typeof engineRef.current.controls.update === 'function') {
+            engineRef.current.controls.update();
+          }
+          renderer.render(scene, camera);
+        };
+        animate();
+
+        return () => {
+          cancelAnimationFrame(rafId);
+          renderer.domElement.removeEventListener('pointerdown', onPointer);
+          window.removeEventListener('resize', onResize);
+          renderer.dispose();
+          container.removeChild(renderer.domElement);
+        };
+      }, []);
+
+      // Build or update meshes when state changes
+      useEffect(() => {
+        const { scene } = engineRef.current;
+        if (!scene) return;
+
+        // Utility: fit camera to bounds from current objects/state
+        const fitToState = () => {
+          const positions = [];
+          for (const h of state.houses || []) { const p = toWorld(h.x, h.y); positions.push(new THREE.Vector3(p.x, 0, p.z)); }
+          for (const h of state.hospitals || []) { const p = toWorld(h.x, h.y); positions.push(new THREE.Vector3(p.x, 0, p.z)); }
+          if (!positions.length) return;
+          const box = new THREE.Box3();
+          for (const v of positions) box.expandByPoint(v);
+          const center = new THREE.Vector3(); box.getCenter(center);
+          const size = new THREE.Vector3(); box.getSize(size);
+          const maxDim = Math.max(size.x, size.z);
+          const fov = engineRef.current.camera.fov * (Math.PI / 180);
+          const dist = (maxDim * 0.65) / Math.tan(fov / 2);
+          const dir = new THREE.Vector3(1, 1.2, 1).normalize();
+          const newPos = center.clone().add(dir.multiplyScalar(dist));
+          engineRef.current.camera.position.copy(newPos);
+          engineRef.current.controls.target.copy(center);
+          engineRef.current.controls.update();
+        };
+
+        // Houses
+        for (const house of state.houses || []) {
+          let mesh = objectsRef.current.houses.get(house.id);
+          const color = house.has_patient ? (house.ambulance_on_the_way ? 0xeab308 : 0xef4444) : 0x16a34a;
+          const { x, z } = toWorld(house.x, house.y);
+          if (!mesh) {
+            const geo = new THREE.BoxGeometry(0.9, 0.6, 0.9);
+            const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.1 });
+            mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, 0.3, z);
+            mesh.castShadow = true; mesh.receiveShadow = true;
+            mesh.userData = { id: house.id, hasPatient: house.has_patient };
+            objectsRef.current.houses.set(house.id, mesh);
+            scene.add(mesh);
+          } else {
+            mesh.material.color.setHex(color);
+            mesh.position.set(x, 0.3, z);
+            mesh.userData.hasPatient = house.has_patient;
+          }
+        }
+
+        // Helper to ensure a hospital group exists with simple rooms (walls + floor)
+        const ensureHospitalGroup = (hospital, pos) => {
+          let group = objectsRef.current.hospitalGroups.get(hospital.id);
+          if (!group) {
+            group = new THREE.Group();
+            group.position.set(pos.x, 0, pos.z);
+            // Room builder
+            const makeRoom = (center, size, color) => {
+              const room = new THREE.Group();
+              room.position.set(center.x, 0, center.z);
+              // floor
+              const floor = new THREE.Mesh(
+                new THREE.PlaneGeometry(size.x, size.z),
+                new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.05, opacity: 0.9, transparent: true, side: THREE.DoubleSide })
+              );
+              floor.rotation.x = -Math.PI / 2;
+              floor.receiveShadow = true;
+              room.add(floor);
+              // walls (U-shape: back + left + right)
+              const wallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, opacity: 0.18, transparent: true });
+              const wallH = 0.8; const thickness = 0.04;
+              const back = new THREE.Mesh(new THREE.BoxGeometry(size.x, wallH, thickness), wallMat);
+              back.position.set(0, wallH/2, -size.z/2);
+              const left = new THREE.Mesh(new THREE.BoxGeometry(thickness, wallH, size.z), wallMat);
+              left.position.set(-size.x/2, wallH/2, 0);
+              const right = new THREE.Mesh(new THREE.BoxGeometry(thickness, wallH, size.z), wallMat);
+              right.position.set(size.x/2, wallH/2, 0);
+              room.add(back, left, right);
+              group.add(room);
+              return { center: new THREE.Vector3(center.x, 0.25, center.z), size };
+            };
+
+            // Create three rooms placed to the right of the hospital to avoid overlap
+            const waitingRoom = makeRoom({ x: 2.2, z: 1.0 }, { x: 1.8, z: 1.0 }, 0xffb020);
+            const treatingRoom = makeRoom({ x: 2.2, z: 0.0 }, { x: 1.8, z: 1.2 }, 0x62b0ff);
+            const dischargedRoom = makeRoom({ x: 2.2, z: -1.0 }, { x: 1.8, z: 1.0 }, 0x16d39a);
+
+            // Simple parking bays to the left of hospital
+            const bayCount = 5;
+            const baySpacing = 0.6;
+            const baseBayX = -3.2, baseBayZ = 1.0;
+            for (let i = 0; i < bayCount; i++) {
+              const bay = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.5, 0.28),
+                new THREE.MeshStandardMaterial({ color: 0x9ca3af, opacity: 0.35, transparent: true, side: THREE.DoubleSide })
+              );
+              bay.rotation.x = -Math.PI / 2;
+              bay.position.set(baseBayX + i * baySpacing, 0.011, baseBayZ);
+              bay.receiveShadow = true;
+              group.add(bay);
+            }
+
+            group.userData = { waitingRoom, treatingRoom, dischargedRoom, bayOrigin: new THREE.Vector3(baseBayX, 0.25, baseBayZ), baySpacing };
+            engineRef.current.scene.add(group);
+            objectsRef.current.hospitalGroups.set(hospital.id, group);
+          } else {
+            group.position.set(pos.x, 0, pos.z);
+          }
+          return group;
+        };
+
+        // Canvas label helper for counts above hospitals
+        const upsertHospitalLabel = (hospitalId, worldPos, counts) => {
+          let sprite = objectsRef.current.hospitalLabels.get(hospitalId);
+          const buildTexture = () => {
+            const cvs = document.createElement('canvas');
+            cvs.width = 384; cvs.height = 96;
+            const ctx = cvs.getContext('2d');
+            ctx.fillStyle = 'rgba(13,20,31,0.85)';
+            ctx.fillRect(0, 0, cvs.width, cvs.height);
+            ctx.font = 'bold 40px Inter, Arial';
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.fillText(`W ${counts.w}  |  T ${counts.t}  |  D ${counts.d}`, cvs.width/2, 62);
+            const tex = new THREE.CanvasTexture(cvs);
+            tex.needsUpdate = true;
+            return tex;
+          };
+          if (!sprite) {
+            const mat = new THREE.SpriteMaterial({ map: buildTexture(), depthWrite: false, transparent: true });
+            sprite = new THREE.Sprite(mat);
+            sprite.scale.set(3.2, 0.8, 1);
+            engineRef.current.scene.add(sprite);
+            objectsRef.current.hospitalLabels.set(hospitalId, sprite);
+          } else {
+            const tex = buildTexture();
+            sprite.material.map.dispose();
+            sprite.material.map = tex;
+            sprite.material.needsUpdate = true;
+          }
+          sprite.position.set(worldPos.x, worldPos.y, worldPos.z);
+        };
+
+        // Hospitals
+        for (const hospital of state.hospitals || []) {
+          let mesh = objectsRef.current.hospitals.get(hospital.id);
+          const { x, z } = toWorld(hospital.x, hospital.y);
+          const hospitalPos = { x, z };
+          if (!mesh) {
+            const geo = new THREE.BoxGeometry(2.6, 1.2, 2.0);
+            const mat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.5, metalness: 0.2, transparent: true, opacity: 0.28 });
+            mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, 0.5, z);
+            mesh.castShadow = true; mesh.receiveShadow = true;
+            objectsRef.current.hospitals.set(hospital.id, mesh);
+            scene.add(mesh);
+          } else {
+            mesh.position.set(x, 0.5, z);
+          }
+          // Ensure hospital group and update patient tokens per queue
+          const group = ensureHospitalGroup(hospital, hospitalPos);
+          const layoutGridInRoom = (room, idx) => {
+            const cols = 3;
+            const gapX = Math.min(0.35, room.size.x / (cols + 1));
+            const gapZ = Math.min(0.35, room.size.z / (cols + 1));
+            const row = Math.floor(idx / cols);
+            const col = idx % cols;
+            const startX = room.center.x - (gapX * (cols - 1)) / 2;
+            const startZ = room.center.z + room.size.z * 0.25; // front to back
+            return new THREE.Vector3(startX + col * gapX, room.center.y, startZ - row * gapZ);
+          };
+
+          const syncPatients = (patients, room, colorHex, status) => {
+            patients.forEach((p, idx) => {
+              let token = objectsRef.current.patientMeshes.get(p.id);
+              if (!token) {
+                // seated person: cylinder body + head sphere
+                const person = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.18, 14), new THREE.MeshStandardMaterial({ color: colorHex, emissive: colorHex, emissiveIntensity: 0.3 }));
+                body.position.y = 0.18;
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffe0bd }));
+                head.position.y = 0.30;
+                person.add(body, head);
+                person.castShadow = true; person.receiveShadow = true;
+                engineRef.current.scene.add(person);
+                token = person;
+                objectsRef.current.patientMeshes.set(p.id, person);
+              } else {
+                // update emissive if exists
+                token.traverse((o) => { if (o.isMesh && o.material?.emissive) { o.material.emissive.setHex(colorHex); o.material.color?.setHex(colorHex); } });
+              }
+              const targetLocal = layoutGridInRoom(room, idx);
+              const targetWorld = group.localToWorld(targetLocal.clone());
+              token.userData.target = targetWorld;
+              if (!token.position || token.position.lengthSq() === 0) {
+                token.position.copy(targetWorld);
+              }
+              token.userData.status = status;
+            });
+          };
+
+          syncPatients(hospital.waiting || [], group.userData.waitingRoom, 0xffd166, 'waiting');
+          syncPatients(hospital.treating || [], group.userData.treatingRoom, 0x93c5fd, 'treating');
+          syncPatients(hospital.discharged || [], group.userData.dischargedRoom, 0x6ee7b7, 'discharged');
+
+          // Update label above hospital with counts
+          upsertHospitalLabel(hospital.id, new THREE.Vector3(x + 2.2, 0.04, z - 2.8), {
+            w: (hospital.waiting || []).length,
+            t: (hospital.treating || []).length,
+            d: (hospital.discharged || []).length
+          });
+        }
+
+        // Precompute idle ambulances grouped by nearest hospital (state green with no patient)
+        const idleByHospital = new Map();
+        (state.ambulances || []).forEach(a => {
+          if (a.state === 'green' && !a.patient_id) {
+            let nearest = null; let best = Infinity;
+            for (const h of state.hospitals || []) {
+              const dx = a.x - h.x; const dy = a.y - h.y; const d = dx*dx + dy*dy;
+              if (d < best) { best = d; nearest = h; }
+            }
+            if (nearest) {
+              const list = idleByHospital.get(nearest.id) || [];
+              list.push(a);
+              idleByHospital.set(nearest.id, list);
+            }
+          }
+        });
+
+        // Ambulances (including ramping queue outside hospitals)
+        const img = document.getElementById('ambulance-template');
+        for (const amb of state.ambulances || []) {
+          let mesh = objectsRef.current.ambulances.get(amb.id);
+          const { x, z } = toWorld(amb.x, amb.y);
+          if (!mesh) {
+            const geo = new THREE.BoxGeometry(0.7, 0.4, 0.35);
+            const mat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            mesh = new THREE.Mesh(geo, mat);
+            // Add a red stripe
+            const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.05, 0.36), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
+            stripe.position.set(0, -0.05, 0);
+            mesh.add(stripe);
+            mesh.position.set(x, 0.25, z);
+            mesh.userData.target = new THREE.Vector3(x, 0.25, z);
+            mesh.userData.carry = null;
+            mesh.castShadow = true; mesh.receiveShadow = true;
+            objectsRef.current.ambulances.set(amb.id, mesh);
+            scene.add(mesh);
+          } else {
+            mesh.userData.target.set(x, 0.25, z);
+          }
+          // Attach patient sphere only when ambulance is carrying or ramping (yellow/orange)
+          if (amb.patient_id && (amb.state === 'yellow' || amb.state === 'orange')) {
+            let carry = mesh.userData.carry;
+            if (!carry) {
+              carry = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), new THREE.MeshStandardMaterial({ color: 0xf43f5e }));
+              carry.position.copy(mesh.position.clone().add(new THREE.Vector3(0, 0.25, 0)));
+              engineRef.current.scene.add(carry);
+              mesh.userData.carry = carry;
+            }
+          } else if (mesh.userData.carry) {
+            // Drop the visual if not carrying anymore
+            engineRef.current.scene.remove(mesh.userData.carry);
+            mesh.userData.carry.geometry.dispose();
+            mesh.userData.carry.material.dispose();
+            mesh.userData.carry = null;
+          }
+
+          // If ramping (state 'orange'), position ambulance in a visual queue outside the hospital
+          if (amb.state === 'orange' && typeof amb.queue_hospital_id === 'number') {
+            const h = state.hospitals?.find(hh => hh.id === amb.queue_hospital_id);
+            if (h) {
+              const { x: hx, z: hz } = toWorld(h.x, h.y);
+              // Order index among queued ambs by id strictly less than current
+              const idx = (state.ambulances || []).filter(a => a.state === 'orange' && a.queue_hospital_id === h.id && a.id < amb.id).length;
+              // Queue along +x beyond the waiting room, spaced out
+              const base = new THREE.Vector3(hx + 3.4, 0.25, hz + 1.4);
+              const queuePos = base.add(new THREE.Vector3(idx * 0.6, 0, 0));
+              mesh.userData.target.copy(queuePos);
+            }
+          }
+
+          // If idle (green, no patient), park in bays to the left of nearest hospital
+          if (amb.state === 'green' && !amb.patient_id) {
+            let nearest = null; let best = Infinity;
+            for (const h of state.hospitals || []) {
+              const dx = amb.x - h.x; const dy = amb.y - h.y; const d = dx*dx + dy*dy;
+              if (d < best) { best = d; nearest = h; }
+            }
+            if (nearest) {
+              const list = (idleByHospital.get(nearest.id) || []).slice().sort((a,b) => a.id - b.id);
+              const idx = list.findIndex(a => a.id === amb.id);
+              const { x: hx, z: hz } = toWorld(nearest.x, nearest.y);
+              const park = new THREE.Vector3(hx - 3.2 + idx * 0.6, 0.25, hz + 1.0);
+              mesh.userData.target.copy(park);
+            }
+          }
+        }
+
+        // Remove patient tokens that are no longer present in state
+        const presentIds = new Set();
+        for (const h of state.hospitals || []) {
+          for (const arr of [h.waiting || [], h.treating || [], h.discharged || []]) {
+            for (const p of arr) presentIds.add(p.id);
+          }
+        }
+        for (const [pid, mesh] of Array.from(objectsRef.current.patientMeshes.entries())) {
+          if (!presentIds.has(pid)) {
+            engineRef.current.scene.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+            objectsRef.current.patientMeshes.delete(pid);
+          }
+        }
+
+        // Frame the scene initially once, and allow double-click to refit
+        if (!framedRef.current && (state.houses?.length || 0) + (state.hospitals?.length || 0) > 0) {
+          framedRef.current = true;
+          fitToState();
+        }
+        const canvasEl = engineRef.current.renderer?.domElement;
+        if (canvasEl && !canvasEl._fitHandlerBound) {
+          canvasEl.addEventListener('dblclick', fitToState);
+          canvasEl._fitHandlerBound = true;
+        }
+      }, [state]);
+
+      return <div ref={containerRef} className="stage card" />;
+    }
+
+    function LogCard({ title, emoji, items }) {
+      return (
+        <div className="card log-card">
+          <div className="card-title">{emoji} {title}</div>
+          <ul>
+            {items.map((it, idx) => (
+              <li key={idx}>{it}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    function App() {
+      const { state, patientLog, ambulanceLog, hospitalLog, requests, emit } = useSocket();
+
+      return (
+        <div className="app">
+          <header className="topbar">
+            <div className="brand">
+              <span className="logo">🚑</span>
+              <span>Ambulance Simulation</span>
+            </div>
+            <div className="actions">
+              <div className="stat">
+                <span className="label">LLM</span>
+                <span className="value">{requests.started}</span>
+                <span className="sep">/</span>
+                <span className="value ok">{requests.completed}</span>
+            </div>
+              <button className="btn" onClick={emit.reset}>Reset</button>
+            </div>
+          </header>
+
+          <main className="layout">
+            <section className="stage card" style={{ padding: 0 }}>
+              <IsometricScene state={state} onHouseClick={emit.createPatientAt} />
+            </section>
+            <aside className="sidebar">
+              <LogCard title="Patient Events" emoji="👤" items={patientLog} />
+              <LogCard title="Ambulance Events" emoji="🚑" items={ambulanceLog} />
+              <LogCard title="Hospital Events" emoji="🏥" items={hospitalLog} />
+            </aside>
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
+    {% endraw %}
 </body>
 </html>
