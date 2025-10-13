@@ -152,14 +152,25 @@
 
         engineRef.current = { scene, camera, renderer, raycaster, controls, clock: new THREE.Clock() };
 
-        // Resize handling
-        const onResize = () => {
+        // Resize handling using ResizeObserver to avoid zoom jumps
+        let resizeRaf = 0;
+        const updateSize = () => {
           const { w, h } = size();
-          renderer.setSize(w, h);
-          camera.aspect = w / h;
-          camera.updateProjectionMatrix();
+          if (w > 0 && h > 0) {
+            renderer.setSize(w, h, false);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            if (!resizeRaf && engineRef.current.fitToState) {
+              resizeRaf = requestAnimationFrame(() => {
+                resizeRaf = 0;
+                try { engineRef.current.fitToState(); } catch (e) {}
+              });
+            }
+          }
         };
-        window.addEventListener('resize', onResize);
+        const ro = new ResizeObserver(() => updateSize());
+        ro.observe(container);
+        window.addEventListener('resize', updateSize);
 
         let rafId = null;
         const animate = () => {
@@ -188,7 +199,8 @@
         return () => {
           cancelAnimationFrame(rafId);
           renderer.domElement.removeEventListener('pointerdown', onPointer);
-          window.removeEventListener('resize', onResize);
+          window.removeEventListener('resize', updateSize);
+          ro.disconnect();
           renderer.dispose();
           container.removeChild(renderer.domElement);
         };
@@ -222,6 +234,7 @@
           engineRef.current.controls.target.copy(center);
           engineRef.current.controls.update();
         };
+        engineRef.current.fitToState = fitToState;
 
         // Houses
         for (const house of state.houses || []) {
