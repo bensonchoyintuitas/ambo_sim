@@ -77,6 +77,7 @@
       const framedRef = useRef(false);
 
       const WORLD_SCALE = 0.06;
+      const BASE_FRUSTUM = 30; // world units visible vertically in ortho camera before zoom
       const toWorld = (x, y) => ({ x: (x - 400) * WORLD_SCALE, z: (y - 325) * WORLD_SCALE });
 
       useEffect(() => {
@@ -94,8 +95,16 @@
         renderer.domElement.className = 'sim-canvas';
         container.appendChild(renderer.domElement);
 
-        const camera = new THREE.PerspectiveCamera(50, initW/initH, 0.1, 2000);
-        camera.position.set(28, 32, 28); // slightly wider framing
+        const aspect = initW / initH;
+        const camera = new THREE.OrthographicCamera(
+          (-BASE_FRUSTUM * aspect) / 2,
+          (BASE_FRUSTUM * aspect) / 2,
+          BASE_FRUSTUM / 2,
+          -BASE_FRUSTUM / 2,
+          0.1,
+          2000
+        );
+        camera.position.set(28, 32, 28); // isometric-ish
         camera.lookAt(0, 0, 0);
 
         // Orbit controls
@@ -116,6 +125,10 @@
           controls.enablePan = true;
           if (typeof controls.update !== 'function') controls.update = () => {};
           if (!controls.target) controls.target = new THREE.Vector3();
+          // lock polar angle for consistent isometric angle (≈54.7356° from vertical)
+          const ISO_POLAR = THREE.MathUtils.degToRad(54.7356);
+          controls.minPolarAngle = ISO_POLAR;
+          controls.maxPolarAngle = ISO_POLAR;
         }
 
         // Lights
@@ -158,7 +171,11 @@
           const { w, h } = size();
           if (w > 0 && h > 0) {
             renderer.setSize(w, h, false);
-            camera.aspect = w / h;
+            const a = w / h;
+            camera.left = (-BASE_FRUSTUM * a) / 2;
+            camera.right = (BASE_FRUSTUM * a) / 2;
+            camera.top = BASE_FRUSTUM / 2;
+            camera.bottom = -BASE_FRUSTUM / 2;
             camera.updateProjectionMatrix();
             if (!resizeRaf && engineRef.current.fitToState) {
               resizeRaf = requestAnimationFrame(() => {
@@ -221,17 +238,18 @@
           for (const v of positions) box.expandByPoint(v);
           const center = new THREE.Vector3(); box.getCenter(center);
           const size = new THREE.Vector3(); box.getSize(size);
-          const fov = engineRef.current.camera.fov * (Math.PI / 180);
-          const aspect = engineRef.current.renderer.domElement.clientWidth / engineRef.current.renderer.domElement.clientHeight;
-          const halfX = size.x / 2;
-          const halfZ = size.z / 2;
-          const distZ = halfZ / Math.tan(fov / 2);
-          const distX = halfX / (Math.tan(fov / 2) * aspect);
-          const dist = Math.max(distX, distZ) * 1.15; // add margin
-          const dir = new THREE.Vector3(1, 1.2, 1).normalize();
-          const newPos = center.clone().add(dir.multiplyScalar(dist));
-          engineRef.current.camera.position.copy(newPos);
+          const a = engineRef.current.renderer.domElement.clientWidth / engineRef.current.renderer.domElement.clientHeight;
+          const viewWidth = BASE_FRUSTUM * a;
+          const viewHeight = BASE_FRUSTUM;
+          const margin = 1.25; // add margins so content isn't at edges
+          const zoomX = viewWidth / (size.x * margin || 1);
+          const zoomY = viewHeight / (size.z * margin || 1);
+          engineRef.current.camera.zoom = Math.min(zoomX, zoomY);
+          engineRef.current.camera.updateProjectionMatrix();
+          // Keep camera on isometric ray through center
+          const dir = engineRef.current.camera.position.clone().sub(engineRef.current.controls.target).normalize();
           engineRef.current.controls.target.copy(center);
+          engineRef.current.camera.position.copy(center.clone().add(dir.multiplyScalar(40)));
           engineRef.current.controls.update();
         };
         engineRef.current.fitToState = fitToState;
@@ -573,7 +591,7 @@
           </header>
 
           <main className="layout">
-            <section className="stage card" style={{ padding: 0 }}>
+            <section className="stage">
               <IsometricScene state={state} onHouseClick={emit.createPatientAt} />
             </section>
             <aside className="sidebar">
