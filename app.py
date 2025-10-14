@@ -28,14 +28,18 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+# Reduce noisy request logs from Werkzeug/Socket.IO long-polling
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
+logging.getLogger('engineio').setLevel(logging.WARNING)
+logging.getLogger('socketio').setLevel(logging.WARNING)
 
 app = Flask(__name__)
-socketio = SocketIO(app)
+socketio = SocketIO(app, logger=False, engineio_logger=False)
 
 # Configurable variables
 GLOBAL_MAX_PATIENTS_PER_HOSPITAL = 2  # Maximum patients that can be treated simultaneously in each hospital
 WAITING_TIME = 2  # seconds (time step in seconds; controls speed of moving from waiting to treating)
-TREATING_TIME = 40  # seconds
+TREATING_TIME = 40  # seconds total treatment duration
 DEFAULT_LLM_MODEL = 'llama3.1:8b'  # Default LLM model to use
 PATIENT_GENERATION_LOWER_BOUND = 5  # Lower bound for patient generation delay
 PATIENT_GENERATION_UPPER_BOUND = 10  # Upper bound for patient generation delay
@@ -172,7 +176,16 @@ class Hospital:
         if self.waiting and len(self.treating) < GLOBAL_MAX_PATIENTS_PER_HOSPITAL:
             patient = self.waiting.pop(0)  # Remove the first patient from the waiting queue
             self.treating.append(patient)
-            patient.wait_time = 0  # Reset wait time
+            # Log movement to treating queue with context
+            try:
+                cond = patient.condition.code.get('display', 'Unknown') if patient and patient.condition else 'Unknown'
+                log_event(
+                    f"{patient.name} moved to treating list | Hospital {self.id} | Condition: {cond}",
+                    event_type='hospital'
+                )
+            except Exception:
+                pass
+            patient.wait_time = 0  # Reset wait time (used for treatment duration)
             return patient
         return None
 
@@ -566,7 +579,8 @@ def move_ambulances():
                     elif ambulance.x == ambulance.target[0] and ambulance.y == ambulance.target[1]:
                         # If ambulance reached the hospital
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
-                        patient = next((p for p in patients if p.id == ambulance.patient.id), None)
+                        # Use the patient reference carried by the ambulance; guard if None
+                        patient = ambulance.patient
                         if patient:
                             # If waiting room has capacity, drop patient; otherwise ramp outside
                             if len(nearest_hospital.waiting) < HOSPITAL_WAITING_CAPACITY:
@@ -586,6 +600,12 @@ def move_ambulances():
                                     f"Ambulance {ambulance.id} waiting to offload at Hospital {nearest_hospital.id} (waiting full)",
                                     event_type='ambulance'
                                 )
+                        else:
+                            # No patient attached, reset ambulance to available state
+                            ambulance.is_available = True
+                            ambulance.state = 'green'
+                            ambulance.target = None
+                            ambulance.queue_hospital_id = None
 
         socketio.emit('update_state', get_state())
         time.sleep(0.05)  # Reduce the sleep time to make the simulation feel faster
@@ -790,11 +810,25 @@ def process_patient_discharge(hospital, patient, encounter):
 
 def manage_hospital_queues():
     """Manage the movement of patients between hospital queues."""
-    hospital_locks = {hospital.id: Lock() for hospital in hospitals}  # Individual locks per hospital
+    # Maintain locks per hospital id, and keep them in sync with the dynamic hospitals list
+    hospital_locks = {}
     
     while True:
+        # Sync locks with current hospitals (add new, remove stale)
+        current_ids = {h.id for h in hospitals}
+        for hid in list(hospital_locks.keys()):
+            if hid not in current_ids:
+                del hospital_locks[hid]
+        for h in hospitals:
+            if h.id not in hospital_locks:
+                hospital_locks[h.id] = Lock()
+
         for hospital in hospitals:
-            with hospital_locks[hospital.id]:
+            lock = hospital_locks.get(hospital.id)
+            if lock is None:
+                # If races occur during reset, skip this iteration; lock will be available next loop
+                continue
+            with lock:
                 # Process waiting patients
                 if hospital.waiting:
                     for patient in hospital.waiting:
@@ -908,13 +942,21 @@ def generate_patients_automatically(llm_model=None):
         generate_random_patient(llm_model)
         time.sleep(random.randint(PATIENT_GENERATION_LOWER_BOUND, PATIENT_GENERATION_UPPER_BOUND))  # Random interval between 1 to 5 seconds
 
-def reset_simulation(house_count=None, hospital_count=None, ambulance_count=None, waiting_time=None):
+def reset_simulation(house_count=None, hospital_count=None, ambulance_count=None, waiting_time=None, treating_time=None, gen_min=None, gen_max=None):
     """Reset the simulation to the provided configuration (or defaults)."""
-    global houses, hospitals, ambulances, WAITING_TIME
+    global houses, hospitals, ambulances, WAITING_TIME, TREATING_TIME, PATIENT_GENERATION_LOWER_BOUND, PATIENT_GENERATION_UPPER_BOUND
 
     # Update timings if provided
     if isinstance(waiting_time, int) and waiting_time >= 0:
         WAITING_TIME = waiting_time
+    if isinstance(treating_time, int) and treating_time >= 0:
+        TREATING_TIME = treating_time
+    if isinstance(gen_min, int) and gen_min >= 0:
+        PATIENT_GENERATION_LOWER_BOUND = gen_min
+    if isinstance(gen_max, int) and gen_max >= 0:
+        PATIENT_GENERATION_UPPER_BOUND = gen_max
+    if PATIENT_GENERATION_UPPER_BOUND < PATIENT_GENERATION_LOWER_BOUND:
+        PATIENT_GENERATION_UPPER_BOUND = PATIENT_GENERATION_LOWER_BOUND
 
     hc = int(house_count) if house_count is not None else DEFAULT_HOUSES
     hospc = int(hospital_count) if hospital_count is not None else DEFAULT_HOSPITALS
@@ -936,6 +978,17 @@ def reset_simulation(house_count=None, hospital_count=None, ambulance_count=None
             hospital = hospitals[i % len(hospitals)]
             ambulances.append(Ambulance(i, hospital.x, hospital.y))
 
+    # Clear event logs and notify clients
+    try:
+        patient_event_log.clear()
+        ambulance_event_log.clear()
+        hospital_event_log.clear()
+        socketio.emit('update_patient_log', patient_event_log)
+        socketio.emit('update_ambulance_log', ambulance_event_log)
+        socketio.emit('update_hospital_log', hospital_event_log)
+    except Exception:
+        pass
+
     # Emit the updated state to all clients
     socketio.emit('update_state', get_state())
 
@@ -952,16 +1005,25 @@ def handle_apply_config(data):
         hospital_count = int(data.get('hospitals', DEFAULT_HOSPITALS))
         ambulance_count = int(data.get('ambulances', DEFAULT_AMBULANCES))
         waiting_time = int(data.get('waiting_time', WAITING_TIME))
+        treating_time = int(data.get('treating_time', TREATING_TIME))
+        gen_min = int(data.get('gen_min', PATIENT_GENERATION_LOWER_BOUND))
+        gen_max = int(data.get('gen_max', PATIENT_GENERATION_UPPER_BOUND))
     except Exception:
         house_count = DEFAULT_HOUSES
         hospital_count = DEFAULT_HOSPITALS
         ambulance_count = DEFAULT_AMBULANCES
         waiting_time = WAITING_TIME
+        treating_time = TREATING_TIME
+        gen_min = PATIENT_GENERATION_LOWER_BOUND
+        gen_max = PATIENT_GENERATION_UPPER_BOUND
 
     reset_simulation(house_count=house_count,
                      hospital_count=hospital_count,
                      ambulance_count=ambulance_count,
-                     waiting_time=waiting_time)
+                     waiting_time=waiting_time,
+                     treating_time=treating_time,
+                     gen_min=gen_min,
+                     gen_max=gen_max)
 
 def initialize_fhir_session():
     """Initialize a new session directory for FHIR outputs."""

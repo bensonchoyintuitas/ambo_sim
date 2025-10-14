@@ -47,7 +47,8 @@
       const socketRef = useRef(null);
 
       useEffect(() => {
-        socketRef.current = io();
+        // Use long-polling only to avoid websocket upgrade errors in some dev setups
+        socketRef.current = io({ transports: ['polling'], upgrade: false });
 
         socketRef.current.on('update_state', (s) => setState(s));
         socketRef.current.on('update_patient_log', (log) => setPatientLog(log));
@@ -325,8 +326,8 @@
         for (const [hid, mesh] of Array.from(objectsRef.current.houses.entries())) {
           if (!houseIds.has(hid)) {
             engineRef.current.scene.remove(mesh);
-            mesh.geometry.dispose();
-            mesh.material.dispose();
+            try { mesh.geometry && typeof mesh.geometry.dispose === 'function' && mesh.geometry.dispose(); } catch (e) {}
+            try { mesh.material && typeof mesh.material.dispose === 'function' && mesh.material.dispose(); } catch (e) {}
             objectsRef.current.houses.delete(hid);
           }
         }
@@ -503,23 +504,28 @@
         for (const [hid, mesh] of Array.from(objectsRef.current.hospitals.entries())) {
           if (!hospitalIds.has(hid)) {
             engineRef.current.scene.remove(mesh);
-            mesh.geometry.dispose();
-            mesh.material.dispose();
+            try { mesh.geometry && typeof mesh.geometry.dispose === 'function' && mesh.geometry.dispose(); } catch (e) {}
+            try { mesh.material && typeof mesh.material.dispose === 'function' && mesh.material.dispose(); } catch (e) {}
             objectsRef.current.hospitals.delete(hid);
           }
         }
         for (const [hid, group] of Array.from(objectsRef.current.hospitalGroups.entries())) {
           if (!hospitalIds.has(hid)) {
             engineRef.current.scene.remove(group);
-            group.traverse((o)=>{ if(o.isMesh){ o.geometry?.dispose?.(); o.material?.dispose?.(); }});
+            try {
+              group.traverse((o)=>{ if(o.isMesh){
+                try { o.geometry && typeof o.geometry.dispose === 'function' && o.geometry.dispose(); } catch (e) {}
+                try { o.material && typeof o.material.dispose === 'function' && o.material.dispose(); } catch (e) {}
+              }});
+            } catch (e) {}
             objectsRef.current.hospitalGroups.delete(hid);
           }
         }
         for (const [hid, sprite] of Array.from(objectsRef.current.hospitalLabels.entries())) {
           if (!hospitalIds.has(hid)) {
             engineRef.current.scene.remove(sprite);
-            sprite.material?.map?.dispose?.();
-            sprite.material?.dispose?.();
+            try { sprite.material && sprite.material.map && typeof sprite.material.map.dispose === 'function' && sprite.material.map.dispose(); } catch (e) {}
+            try { sprite.material && typeof sprite.material.dispose === 'function' && sprite.material.dispose(); } catch (e) {}
             objectsRef.current.hospitalLabels.delete(hid);
           }
         }
@@ -621,8 +627,8 @@
         for (const [pid, mesh] of Array.from(objectsRef.current.patientMeshes.entries())) {
           if (!presentIds.has(pid)) {
             engineRef.current.scene.remove(mesh);
-            mesh.geometry.dispose();
-            mesh.material.dispose();
+            // Dispose child meshes safely (group has no geometry/material)
+            mesh.traverse((o) => { if (o.isMesh) { o.geometry?.dispose?.(); o.material?.dispose?.(); } });
             objectsRef.current.patientMeshes.delete(pid);
           }
         }
@@ -658,7 +664,23 @@
     function App() {
       const { state, patientLog, ambulanceLog, hospitalLog, requests, emit } = useSocket();
       const [showConfig, setShowConfig] = useState(true);
-      const [form, setForm] = useState({ ambulances: 5, houses: 10, hospitals: 3, waiting_time: 2 });
+      const [starting, setStarting] = useState(false);
+      const [form, setForm] = useState({ ambulances: 5, houses: 10, hospitals: 3, waiting_time: 2, treating_time: 40, gen_min: 5, gen_max: 10 });
+
+      const formatDuration = (totalSeconds) => {
+        const sec = Math.max(0, Math.floor(totalSeconds || 0));
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        return m > 0 ? `${m}m ${s}s` : `${s}s`;
+      };
+
+      // Close splash after we receive a fresh state post-apply
+      useEffect(() => {
+        if (starting) {
+          setShowConfig(false);
+          setStarting(false);
+        }
+      }, [state]);
 
       const stats = useMemo(() => {
         // Longest waiting in room
@@ -703,15 +725,15 @@
                 <span className="label">Room</span>
                 <span className="value">{stats.longestRoom ? `${stats.longestRoom.name}${stats.longestRoomHospital !== null ? `@H${stats.longestRoomHospital}`: ''}` : '—'}</span>
                 <span className="sep">·</span>
-                <span className="value">{stats.longestRoom ? `${stats.longestRoom.condition?.code?.display || 'Cond'} · ${stats.longestRoom.wait_time}s` : ''}</span>
+                <span className="value">{stats.longestRoom ? `${stats.longestRoom.condition?.code?.display || 'Cond'} · ${formatDuration(stats.longestRoom.wait_time)}` : ''}</span>
               </div>
               <div className="stat stat-wide" title="Longest ramp wait with ambulance">
                 <span className="label">Ramp</span>
                 <span className="value">{stats.longestRamp ? `${stats.longestRamp.patient_name || 'Patient'}@H${stats.longestRamp.queue_hospital_id} A${stats.longestRamp.id}` : '—'}</span>
                 <span className="sep">·</span>
-                <span className="value">{stats.longestRamp ? `${stats.longestRamp.patient_condition_display || 'Cond'} · ${stats.longestRamp.ramp_wait_seconds}s` : ''}</span>
+                <span className="value">{stats.longestRamp ? `${stats.longestRamp.patient_condition_display || 'Cond'} · ${formatDuration(stats.longestRamp.ramp_wait_seconds)}` : ''}</span>
               </div>
-              <button className="btn" onClick={emit.reset}>Reset</button>
+              <button className="btn" onClick={()=>{ setShowConfig(true); emit.reset(); }}>Reset</button>
             </div>
           </header>
 
@@ -749,11 +771,26 @@
                       <input type="number" min="0" value={form.waiting_time}
                         onChange={(e)=>setForm({...form, waiting_time: parseInt(e.target.value||'0',10)})} />
                     </label>
+                    <label>
+                      <span>Treating time (s)</span>
+                      <input type="number" min="0" value={form.treating_time}
+                        onChange={(e)=>setForm({...form, treating_time: parseInt(e.target.value||'0',10)})} />
+                    </label>
+                    <label>
+                      <span>Gen min (s)</span>
+                      <input type="number" min="0" value={form.gen_min}
+                        onChange={(e)=>setForm({...form, gen_min: parseInt(e.target.value||'0',10)})} />
+                    </label>
+                    <label>
+                      <span>Gen max (s)</span>
+                      <input type="number" min="0" value={form.gen_max}
+                        onChange={(e)=>setForm({...form, gen_max: parseInt(e.target.value||'0',10)})} />
+                    </label>
                   </div>
                   <div className="splash-actions">
                     <button className="btn" onClick={()=>{
                       emit.applyConfig(form);
-                      setShowConfig(false);
+                      setStarting(true);
                     }}>Start</button>
                     <button className="btn" onClick={()=>setShowConfig(false)}>Use defaults</button>
                   </div>
