@@ -129,6 +129,7 @@ class Ambulance:
         self.state = 'green'  # green means available
         self.patient = None  # Store the entire Patient object
         self.queue_hospital_id = None  # If ramping, which hospital we're queued at
+        self.ramp_since = None  # When the ambulance started ramping (epoch seconds)
 
     def move_to(self, target_x, target_y):
         if self.x < target_x:
@@ -565,6 +566,7 @@ def move_ambulances():
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
                         ambulance.target = (nearest_hospital.x, nearest_hospital.y)
                         ambulance.state = 'yellow'  # Has patient, heading to hospital
+                        ambulance.ramp_since = None
                         log_event(f"Ambulance {ambulance.id} picked up {ambulance.patient.name} from House {patient_house.id} and is heading to Hospital {nearest_hospital.id}", event_type='ambulance')
                     elif ambulance.x == ambulance.target[0] and ambulance.y == ambulance.target[1]:
                         # If ambulance reached the hospital
@@ -584,6 +586,7 @@ def move_ambulances():
                                 ambulance.is_available = False
                                 ambulance.state = 'orange'
                                 ambulance.queue_hospital_id = nearest_hospital.id
+                                ambulance.ramp_since = time.time()
                                 log_event(
                                     f"Ambulance {ambulance.id} waiting to offload at Hospital {nearest_hospital.id} (waiting full)",
                                     event_type='ambulance'
@@ -600,7 +603,17 @@ def find_nearest_hospital(x, y):
 def get_state():
     """Returns the state of ambulances, houses, and hospitals."""
     return {
-        'ambulances': [{'id': a.id, 'x': a.x, 'y': a.y, 'state': a.state, 'patient_id': a.patient.id if a.patient else None, 'queue_hospital_id': a.queue_hospital_id} for a in ambulances],
+        'ambulances': [{
+            'id': a.id,
+            'x': a.x,
+            'y': a.y,
+            'state': a.state,
+            'patient_id': a.patient.id if a.patient else None,
+            'patient_name': a.patient.name if a.patient else None,
+            'patient_condition_display': (a.patient.condition.code.get('display', 'Unknown') if a.patient and a.patient.condition else None),
+            'queue_hospital_id': a.queue_hospital_id,
+            'ramp_wait_seconds': int(time.time() - a.ramp_since) if a.state == 'orange' and a.ramp_since else 0
+        } for a in ambulances],
         'houses': [
             {
                 'id': h.id,
@@ -821,6 +834,7 @@ def manage_hospital_queues():
                     amb.state = 'green'
                     amb.patient = None
                     amb.queue_hospital_id = None
+                    amb.ramp_since = None
 
         socketio.emit('update_state', get_state())
         time.sleep(1)

@@ -578,6 +578,31 @@
     function App() {
       const { state, patientLog, ambulanceLog, hospitalLog, requests, emit } = useSocket();
 
+      const stats = useMemo(() => {
+        // Longest waiting in room
+        let longestRoom = null;
+        let longestRoomHospital = null;
+        for (const h of state.hospitals || []) {
+          for (const p of h.waiting || []) {
+            if (!longestRoom || (p.wait_time || 0) > (longestRoom.wait_time || 0)) {
+              longestRoom = p; longestRoomHospital = h.id;
+            }
+          }
+        }
+
+        // Longest ramp wait (ambulance in orange with patient)
+        let longestRamp = null;
+        for (const a of state.ambulances || []) {
+          if (a.state === 'orange' && a.patient_id) {
+            if (!longestRamp || (a.ramp_wait_seconds || 0) > (longestRamp.ramp_wait_seconds || 0)) {
+              longestRamp = a;
+            }
+          }
+        }
+
+        return { longestRoom, longestRoomHospital, longestRamp };
+      }, [state]);
+
       return (
         <div className="app">
           <header className="topbar">
@@ -592,6 +617,18 @@
                 <span className="sep">/</span>
                 <span className="value ok">{requests.completed}</span>
             </div>
+              <div className="stat stat-wide" title="Longest waiting in room and ramp">
+                <span className="label">Room</span>
+                <span className="value">{stats.longestRoom ? `${stats.longestRoom.name}${stats.longestRoomHospital !== null ? `@H${stats.longestRoomHospital}`: ''}` : '—'}</span>
+                <span className="sep">·</span>
+                <span className="value">{stats.longestRoom ? `${stats.longestRoom.condition?.code?.display || 'Cond'} · ${stats.longestRoom.wait_time}s` : ''}</span>
+              </div>
+              <div className="stat stat-wide" title="Longest ramp wait with ambulance">
+                <span className="label">Ramp</span>
+                <span className="value">{stats.longestRamp ? `${stats.longestRamp.patient_name || 'Patient'}@H${stats.longestRamp.queue_hospital_id} A${stats.longestRamp.id}` : '—'}</span>
+                <span className="sep">·</span>
+                <span className="value">{stats.longestRamp ? `${stats.longestRamp.patient_condition_display || 'Cond'} · ${stats.longestRamp.ramp_wait_seconds}s` : ''}</span>
+              </div>
               <button className="btn" onClick={emit.reset}>Reset</button>
             </div>
           </header>
