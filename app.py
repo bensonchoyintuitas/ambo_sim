@@ -34,7 +34,7 @@ socketio = SocketIO(app)
 
 # Configurable variables
 GLOBAL_MAX_PATIENTS_PER_HOSPITAL = 2  # Maximum patients that can be treated simultaneously in each hospital
-WAITING_TIME = 2  # seconds
+WAITING_TIME = 2  # seconds (time step in seconds; controls speed of moving from waiting to treating)
 TREATING_TIME = 40  # seconds
 DEFAULT_LLM_MODEL = 'llama3.1:8b'  # Default LLM model to use
 PATIENT_GENERATION_LOWER_BOUND = 5  # Lower bound for patient generation delay
@@ -197,13 +197,18 @@ class Hospital:
 def calculate_distance(x1, y1, x2, y2):
     return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
-# Set the number of houses to 10 and hospitals to 3
-houses = [House(i, 50, 50 + i * 60) for i in range(10)]
-hospitals = [Hospital(i, 450, 50 + i * 200) for i in range(3)]
+# Default starting counts; may be overridden by client config at runtime
+DEFAULT_HOUSES = 10
+DEFAULT_HOSPITALS = 3
+DEFAULT_AMBULANCES = 5
+
+# Initialize world with defaults
+houses = [House(i, 50, 50 + i * 60) for i in range(DEFAULT_HOUSES)]
+hospitals = [Hospital(i, 450, 50 + i * 200) for i in range(DEFAULT_HOSPITALS)]
 
 # Initialize ambulances at the hospitals, equally distributed
 ambulances = []
-for i in range(5):
+for i in range(DEFAULT_AMBULANCES):
     hospital = hospitals[i % len(hospitals)]  # Distribute ambulances evenly across hospitals
     ambulances.append(Ambulance(i, hospital.x, hospital.y))
 
@@ -451,19 +456,9 @@ def create_patient(house, session_dir=None, llm_model=None):
                 condition = None
         
         if not USE_LLM or condition is None:
-            condition = Condition(
-                id=str(uuid.uuid4()),
-                clinical_status={'code': 'active', 'display': 'Active'},
-                verification_status={'code': 'confirmed', 'display': 'Confirmed'},
-                severity={'code': 'moderate', 'display': 'Moderate'},
-                category={'code': 'problem-list-item', 'display': 'Problem List Item'},
-                code={'code': 'generic', 'display': 'Generic Condition'},
-                subject_reference=f"Patient/{patient_resource['id']}",
-                onset_datetime=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                recorded_date=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                note="Basic fallback condition"
-            )
-            logging.info("Created basic fallback condition")
+            # Use richer fallback generator that picks realistic codes and severities
+            condition = generate_fallback_condition(patient_resource['id'])
+            logging.info("Created fallback condition (varied) using generate_fallback_condition")
         
         # Create the patient object
         try:
@@ -913,33 +908,60 @@ def generate_patients_automatically(llm_model=None):
         generate_random_patient(llm_model)
         time.sleep(random.randint(PATIENT_GENERATION_LOWER_BOUND, PATIENT_GENERATION_UPPER_BOUND))  # Random interval between 1 to 5 seconds
 
-def reset_simulation():
-    """Reset the simulation to its initial state."""
-    global houses, hospitals, ambulances, event_log
+def reset_simulation(house_count=None, hospital_count=None, ambulance_count=None, waiting_time=None):
+    """Reset the simulation to the provided configuration (or defaults)."""
+    global houses, hospitals, ambulances, WAITING_TIME
+
+    # Update timings if provided
+    if isinstance(waiting_time, int) and waiting_time >= 0:
+        WAITING_TIME = waiting_time
+
+    hc = int(house_count) if house_count is not None else DEFAULT_HOUSES
+    hospc = int(hospital_count) if hospital_count is not None else DEFAULT_HOSPITALS
+    ambc = int(ambulance_count) if ambulance_count is not None else DEFAULT_AMBULANCES
 
     # Reinitialize houses
-    houses = [House(i, 50, 50 + i * 60) for i in range(10)]
+    houses = [House(i, 50, 50 + i * 60) for i in range(max(0, hc))]
 
     # Reinitialize hospitals
-    hospitals = [Hospital(i, 450, 50 + i * 200) for i in range(3)]
+    hospitals = [Hospital(i, 450, 50 + i * 200) for i in range(max(0, hospc))]
 
     # Reinitialize ambulances
     ambulances = []
-    for i in range(5):
-        hospital = hospitals[i % len(hospitals)]
-        ambulances.append(Ambulance(i, hospital.x, hospital.y))
-
-    # Clear event log
-    event_log = []
+    for i in range(max(0, ambc)):
+        if not hospitals:
+            # place at origin if no hospitals configured
+            ambulances.append(Ambulance(i, 0, 0))
+        else:
+            hospital = hospitals[i % len(hospitals)]
+            ambulances.append(Ambulance(i, hospital.x, hospital.y))
 
     # Emit the updated state to all clients
     socketio.emit('update_state', get_state())
-    socketio.emit('update_log', event_log)
 
 @socketio.on('reset_simulation')
 def handle_reset_simulation():
     """Handle the reset simulation event from the client."""
     reset_simulation()
+
+@socketio.on('apply_config')
+def handle_apply_config(data):
+    """Apply runtime configuration from the client splash screen and restart world."""
+    try:
+        house_count = int(data.get('houses', DEFAULT_HOUSES))
+        hospital_count = int(data.get('hospitals', DEFAULT_HOSPITALS))
+        ambulance_count = int(data.get('ambulances', DEFAULT_AMBULANCES))
+        waiting_time = int(data.get('waiting_time', WAITING_TIME))
+    except Exception:
+        house_count = DEFAULT_HOUSES
+        hospital_count = DEFAULT_HOSPITALS
+        ambulance_count = DEFAULT_AMBULANCES
+        waiting_time = WAITING_TIME
+
+    reset_simulation(house_count=house_count,
+                     hospital_count=hospital_count,
+                     ambulance_count=ambulance_count,
+                     waiting_time=waiting_time)
 
 def initialize_fhir_session():
     """Initialize a new session directory for FHIR outputs."""

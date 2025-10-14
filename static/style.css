@@ -91,3 +91,12 @@ body {
 .hover-card { position: fixed; z-index: 50; pointer-events: none; background: rgba(13,20,31,0.9); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 8px 10px; color: #fff; box-shadow: 0 8px 24px rgba(0,0,0,0.35); min-width: 220px; max-width: 320px; }
 .hover-title { font-weight: 600; margin-bottom: 4px; }
 .hover-line { opacity: 0.9; font-size: 12px; }
+
+/* Splash configuration overlay */
+.splash { position: absolute; inset: 0; background: rgba(5,7,11,0.6); backdrop-filter: blur(6px) saturate(120%); display: flex; align-items: center; justify-content: center; z-index: 5; padding: 24px; }
+.splash-card { width: 520px; max-width: 92vw; background: rgba(13,20,31,0.9); border: 1px solid rgba(255,255,255,0.12); border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); padding: 18px; }
+.splash-title { font-weight: 600; margin-bottom: 12px; font-size: 16px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid2 label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.grid2 input { appearance: none; background: #111723; color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 10px; padding: 8px 10px; }
+.splash-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }

@@ -65,6 +65,7 @@
       const emit = useMemo(() => ({
         reset: () => socketRef.current?.emit('reset_simulation'),
         createPatientAt: (houseId) => socketRef.current?.emit('create_patient_at_house', { house_id: houseId }),
+        applyConfig: (cfg) => socketRef.current?.emit('apply_config', cfg),
       }), []);
 
       return { state, patientLog, ambulanceLog, hospitalLog, requests, emit };
@@ -319,6 +320,16 @@
             mesh.userData.hasPatient = house.has_patient;
           }
         }
+        // Remove houses no longer in state
+        const houseIds = new Set((state.houses || []).map(h => h.id));
+        for (const [hid, mesh] of Array.from(objectsRef.current.houses.entries())) {
+          if (!houseIds.has(hid)) {
+            engineRef.current.scene.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+            objectsRef.current.houses.delete(hid);
+          }
+        }
 
         // Helper to ensure a hospital group exists with simple rooms (walls + floor)
         const ensureHospitalGroup = (hospital, pos) => {
@@ -487,6 +498,32 @@
           });
         }
 
+        // Remove hospitals, groups, labels no longer in state
+        const hospitalIds = new Set((state.hospitals || []).map(h => h.id));
+        for (const [hid, mesh] of Array.from(objectsRef.current.hospitals.entries())) {
+          if (!hospitalIds.has(hid)) {
+            engineRef.current.scene.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+            objectsRef.current.hospitals.delete(hid);
+          }
+        }
+        for (const [hid, group] of Array.from(objectsRef.current.hospitalGroups.entries())) {
+          if (!hospitalIds.has(hid)) {
+            engineRef.current.scene.remove(group);
+            group.traverse((o)=>{ if(o.isMesh){ o.geometry?.dispose?.(); o.material?.dispose?.(); }});
+            objectsRef.current.hospitalGroups.delete(hid);
+          }
+        }
+        for (const [hid, sprite] of Array.from(objectsRef.current.hospitalLabels.entries())) {
+          if (!hospitalIds.has(hid)) {
+            engineRef.current.scene.remove(sprite);
+            sprite.material?.map?.dispose?.();
+            sprite.material?.dispose?.();
+            objectsRef.current.hospitalLabels.delete(hid);
+          }
+        }
+
         // Precompute idle ambulances grouped by nearest hospital (state green with no patient)
         const idleByHospital = new Map();
         (state.ambulances || []).forEach(a => {
@@ -620,6 +657,8 @@
 
     function App() {
       const { state, patientLog, ambulanceLog, hospitalLog, requests, emit } = useSocket();
+      const [showConfig, setShowConfig] = useState(true);
+      const [form, setForm] = useState({ ambulances: 5, houses: 10, hospitals: 3, waiting_time: 2 });
 
       const stats = useMemo(() => {
         // Longest waiting in room
@@ -685,6 +724,42 @@
               <LogCard title="Ambulance Events" emoji="🚑" items={ambulanceLog} />
               <LogCard title="Hospital Events" emoji="🏥" items={hospitalLog} />
             </aside>
+            {showConfig && (
+              <div className="splash">
+                <div className="splash-card">
+                  <div className="splash-title">Simulation Setup</div>
+                  <div className="grid2">
+                    <label>
+                      <span>Ambulances</span>
+                      <input type="number" min="0" value={form.ambulances}
+                        onChange={(e)=>setForm({...form, ambulances: parseInt(e.target.value||'0',10)})} />
+                    </label>
+                    <label>
+                      <span>Houses</span>
+                      <input type="number" min="0" value={form.houses}
+                        onChange={(e)=>setForm({...form, houses: parseInt(e.target.value||'0',10)})} />
+                    </label>
+                    <label>
+                      <span>Hospitals</span>
+                      <input type="number" min="0" value={form.hospitals}
+                        onChange={(e)=>setForm({...form, hospitals: parseInt(e.target.value||'0',10)})} />
+                    </label>
+                    <label>
+                      <span>Waiting step (s)</span>
+                      <input type="number" min="0" value={form.waiting_time}
+                        onChange={(e)=>setForm({...form, waiting_time: parseInt(e.target.value||'0',10)})} />
+                    </label>
+                  </div>
+                  <div className="splash-actions">
+                    <button className="btn" onClick={()=>{
+                      emit.applyConfig(form);
+                      setShowConfig(false);
+                    }}>Start</button>
+                    <button className="btn" onClick={()=>setShowConfig(false)}>Use defaults</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </main>
         </div>
       );
