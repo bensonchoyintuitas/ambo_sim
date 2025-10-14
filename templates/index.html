@@ -671,7 +671,8 @@
         const sec = Math.max(0, Math.floor(totalSeconds || 0));
         const m = Math.floor(sec / 60);
         const s = sec % 60;
-        return m > 0 ? `${m}m ${s}s` : `${s}s`;
+        const ss = String(s).padStart(2, '0');
+        return `${m}m ${ss}s`;
       };
 
       // Close splash after we receive a fresh state post-apply
@@ -704,7 +705,13 @@
           }
         }
 
-        return { longestRoom, longestRoomHospital, longestRamp };
+        // Aggregate summary counts
+        const rampCount = (state.ambulances || []).filter(a => a.state === 'orange' && a.patient_id).length;
+        const waitingCount = (state.hospitals || []).reduce((acc, h) => acc + ((h.waiting || []).length), 0);
+        const treatingCount = (state.hospitals || []).reduce((acc, h) => acc + ((h.treating || []).length), 0);
+        const dischargedCount = (state.hospitals || []).reduce((acc, h) => acc + ((h.discharged || []).length), 0);
+
+        return { longestRoom, longestRoomHospital, longestRamp, rampCount, waitingCount, treatingCount, dischargedCount };
       }, [state]);
 
       return (
@@ -721,6 +728,22 @@
                 <span className="sep">/</span>
                 <span className="value ok">{requests.completed}</span>
             </div>
+              <div className="stat" title="Patients ramping in ambulances">
+                <span className="label">Ramp</span>
+                <span className="value">{stats.rampCount}</span>
+              </div>
+              <div className="stat" title="Patients waiting in rooms">
+                <span className="label">Wait</span>
+                <span className="value">{stats.waitingCount}</span>
+              </div>
+              <div className="stat" title="Patients currently being treated">
+                <span className="label">Treat</span>
+                <span className="value">{stats.treatingCount}</span>
+              </div>
+              <div className="stat" title="Patients discharged">
+                <span className="label">Disc</span>
+                <span className="value">{stats.dischargedCount}</span>
+              </div>
               <div className="stat stat-wide" title="Longest waiting in room and ramp">
                 <span className="label">Room</span>
                 <span className="value">{stats.longestRoom ? `${stats.longestRoom.name}${stats.longestRoomHospital !== null ? `@H${stats.longestRoomHospital}`: ''}` : '—'}</span>
