@@ -32,6 +32,9 @@ body {
 .brand .logo { filter: drop-shadow(0 1px 0 rgba(0,0,0,0.4)); }
 
 .actions { display: flex; align-items: center; gap: 12px; }
+.leftbar { display: flex; align-items: center; gap: 16px; }
+.actions-fixed { flex-wrap: nowrap; }
+.actions-dynamic { margin-left: auto; }
 
 .stat {
     display: inline-flex;
@@ -46,6 +49,11 @@ body {
 .stat .label { opacity: 0.8; }
 .stat .sep { opacity: 0.4; }
 .stat .value.ok { color: #34d399; }
+/* colored numbers to match scene colors */
+.stat .value.value-ramp { color: #ef4444; }
+.stat .value.value-wait { color: #eab308; }
+.stat .value.value-treat { color: #60a5fa; }
+.stat .value.value-disc { color: #34d399; }
 
 .btn {
     appearance: none;

@@ -48,6 +48,7 @@ OUTPUT_FHIR = False  # Default value, will be updated by command line args
 FHIR_OUTPUT_DIR = "fhir_export"  # Base directory for FHIR outputs
 SESSION_DIR = None  # Will be set at runtime if OUTPUT_FHIR is True
 HOSPITAL_WAITING_CAPACITY = 6  # Maximum patients allowed in a hospital waiting room
+LOG_CAPACITY = 50  # Max events to retain in each UI log
 
 class Condition:
     def __init__(self, id, clinical_status, verification_status, severity, category, 
@@ -236,17 +237,17 @@ def log_event(message, event_type='general'):
     
     if event_type == 'patient':
         patient_event_log.insert(0, log_message)
-        if len(patient_event_log) > 10:
+        if len(patient_event_log) > LOG_CAPACITY:
             patient_event_log.pop()
         socketio.emit('update_patient_log', patient_event_log)
     elif event_type == 'ambulance':
         ambulance_event_log.insert(0, log_message)
-        if len(ambulance_event_log) > 10:
+        if len(ambulance_event_log) > LOG_CAPACITY:
             ambulance_event_log.pop()
         socketio.emit('update_ambulance_log', ambulance_event_log)
     elif event_type == 'hospital':
         hospital_event_log.insert(0, log_message)
-        if len(hospital_event_log) > 10:
+        if len(hospital_event_log) > LOG_CAPACITY:
             hospital_event_log.pop()
         socketio.emit('update_hospital_log', hospital_event_log)
     else:
@@ -553,8 +554,7 @@ def move_ambulances():
                     if patient_house and patient_house.patient_ids:
                         patient_house.remove_patient(ambulance.patient.id)
                         if not patient_house.patient_ids:
-                            patient_house.ambulance_on_the_way = False  # Reset ambulance flag
-                            log_event(f"House {patient_house.id} is now empty and reverts to green.", event_type='ambulance')
+                            patient_house.ambulance_on_the_way = False  # Reset ambulance flag (no log)
                         else:
                             # Check if another ambulance is needed
                             available_ambulances = [a for a in ambulances if a.is_available]
@@ -579,8 +579,7 @@ def move_ambulances():
                     elif ambulance.x == ambulance.target[0] and ambulance.y == ambulance.target[1]:
                         # If ambulance reached the hospital
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
-                        # Use the patient reference carried by the ambulance; guard if None
-                        patient = ambulance.patient
+                        patient = ambulance.patient  # may be None
                         if patient:
                             # If waiting room has capacity, drop patient; otherwise ramp outside
                             if len(nearest_hospital.waiting) < HOSPITAL_WAITING_CAPACITY:
@@ -591,15 +590,16 @@ def move_ambulances():
                                 ambulance.patient = None
                                 ambulance.queue_hospital_id = None
                             else:
-                                # Ramp: keep patient on board, mark ambulance waiting outside
+                                # Ramp: keep patient on board, mark ambulance waiting outside.
                                 ambulance.is_available = False
-                                ambulance.state = 'orange'
                                 ambulance.queue_hospital_id = nearest_hospital.id
-                                ambulance.ramp_since = time.time()
-                                log_event(
-                                    f"Ambulance {ambulance.id} waiting to offload at Hospital {nearest_hospital.id} (waiting full)",
-                                    event_type='ambulance'
-                                )
+                                if ambulance.state != 'orange' or not ambulance.ramp_since:
+                                    ambulance.state = 'orange'
+                                    ambulance.ramp_since = time.time()
+                                    log_event(
+                                        f"Ambulance {ambulance.id} waiting to offload at Hospital {nearest_hospital.id} (waiting full)",
+                                        event_type='ambulance'
+                                    )
                         else:
                             # No patient attached, reset ambulance to available state
                             ambulance.is_available = True

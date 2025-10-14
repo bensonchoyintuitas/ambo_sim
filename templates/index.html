@@ -717,35 +717,39 @@
       return (
         <div className="app">
           <header className="topbar">
-            <div className="brand">
-              <span className="logo">🚑</span>
-              <span>Ambulance Simulation</span>
+            <div className="leftbar">
+              <div className="brand">
+                <span className="logo">🚑</span>
+                <span>Ambulance Simulation</span>
+              </div>
+              <div className="actions actions-fixed">
+                <div className="stat">
+                  <span className="label">LLM</span>
+                  <span className="value">{requests.started}</span>
+                  <span className="sep">/</span>
+                  <span className="value ok">{requests.completed}</span>
+                </div>
+                <div className="stat" title="Patients ramping in ambulances">
+                  <span className="label">Ramp</span>
+                  <span className="value value-ramp">{stats.rampCount}</span>
+                </div>
+                <div className="stat" title="Patients waiting in rooms">
+                  <span className="label">Wait</span>
+                  <span className="value value-wait">{stats.waitingCount}</span>
+                </div>
+                <div className="stat" title="Patients currently being treated">
+                  <span className="label">Treat</span>
+                  <span className="value value-treat">{stats.treatingCount}</span>
+                </div>
+                <div className="stat" title="Patients discharged">
+                  <span className="label">Disc</span>
+                  <span className="value value-disc">{stats.dischargedCount}</span>
+                </div>
+              </div>
             </div>
-            <div className="actions">
-              <div className="stat">
-                <span className="label">LLM</span>
-                <span className="value">{requests.started}</span>
-                <span className="sep">/</span>
-                <span className="value ok">{requests.completed}</span>
-            </div>
-              <div className="stat" title="Patients ramping in ambulances">
-                <span className="label">Ramp</span>
-                <span className="value">{stats.rampCount}</span>
-              </div>
-              <div className="stat" title="Patients waiting in rooms">
-                <span className="label">Wait</span>
-                <span className="value">{stats.waitingCount}</span>
-              </div>
-              <div className="stat" title="Patients currently being treated">
-                <span className="label">Treat</span>
-                <span className="value">{stats.treatingCount}</span>
-              </div>
-              <div className="stat" title="Patients discharged">
-                <span className="label">Disc</span>
-                <span className="value">{stats.dischargedCount}</span>
-              </div>
+            <div className="actions actions-dynamic">
               <div className="stat stat-wide" title="Longest waiting in room and ramp">
-                <span className="label">Room</span>
+                <span className="label">Long wait</span>
                 <span className="value">{stats.longestRoom ? `${stats.longestRoom.name}${stats.longestRoomHospital !== null ? `@H${stats.longestRoomHospital}`: ''}` : '—'}</span>
                 <span className="sep">·</span>
                 <span className="value">{stats.longestRoom ? `${stats.longestRoom.condition?.code?.display || 'Cond'} · ${formatDuration(stats.longestRoom.wait_time)}` : ''}</span>
