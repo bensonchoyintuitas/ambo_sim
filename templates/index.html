@@ -149,6 +149,13 @@
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
+        // Tooltip element
+        const tooltip = document.createElement('div');
+        tooltip.className = 'hover-card';
+        tooltip.style.display = 'none';
+        document.body.appendChild(tooltip);
+        engineRef.current.tooltip = tooltip;
+
         const onPointer = (e) => {
           const rect = renderer.domElement.getBoundingClientRect();
           mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -163,6 +170,37 @@
           }
         };
         renderer.domElement.addEventListener('pointerdown', onPointer);
+
+        const onMove = (e) => {
+          const rect = renderer.domElement.getBoundingClientRect();
+          mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          raycaster.setFromCamera(mouse, camera);
+          const patientObjs = Array.from(objectsRef.current.patientMeshes.values());
+          const hits = raycaster.intersectObjects(patientObjs, true);
+          if (hits.length) {
+            // climb to group carrying userData.patient if needed
+            let obj = hits[0].object;
+            while (obj && !obj.userData?.patient && obj.parent) obj = obj.parent;
+            const pdata = obj?.userData?.patient;
+            if (pdata) {
+              const { name, condition, wait_time, status, hospitalId } = pdata;
+              const cond = condition?.code?.display || 'Condition';
+              tooltip.innerHTML = `
+                <div class="hover-title">👤 ${name}</div>
+                <div class="hover-line">${status} @ H${hospitalId} · ${wait_time || 0}s</div>
+                <div class="hover-line">${cond}</div>`;
+              tooltip.style.left = `${e.clientX + 12}px`;
+              tooltip.style.top = `${e.clientY + 12}px`;
+              tooltip.style.display = 'block';
+            } else {
+              tooltip.style.display = 'none';
+            }
+          } else {
+            tooltip.style.display = 'none';
+          }
+        };
+        renderer.domElement.addEventListener('pointermove', onMove);
 
         engineRef.current = { scene, camera, renderer, raycaster, controls, clock: new THREE.Clock() };
 
@@ -221,6 +259,9 @@
           ro.disconnect();
           renderer.dispose();
           container.removeChild(renderer.domElement);
+          if (engineRef.current.tooltip && engineRef.current.tooltip.parentElement) {
+            engineRef.current.tooltip.parentElement.removeChild(engineRef.current.tooltip);
+          }
         };
       }, []);
 
@@ -401,7 +442,7 @@
             return new THREE.Vector3(startX + col * gapX, room.center.y, startZ - row * gapZ);
           };
 
-          const syncPatients = (patients, room, colorHex, status) => {
+          const syncPatients = (patients, room, colorHex, status, hospitalId) => {
             patients.forEach((p, idx) => {
               let token = objectsRef.current.patientMeshes.get(p.id);
               if (!token) {
@@ -422,6 +463,8 @@
                 token.traverse((o) => { if (o.isMesh && o.material?.emissive) { o.material.emissive.setHex(colorHex); o.material.color?.setHex(colorHex); } });
                 token.scale.set(1.0, 1.0, 1.0);
               }
+              // attach patient info for hover
+              token.userData.patient = { id: p.id, name: p.name, condition: p.condition, wait_time: p.wait_time, status, hospitalId };
               const targetLocal = layoutGridInRoom(room, idx);
               const targetWorld = group.localToWorld(targetLocal.clone());
               token.userData.target = targetWorld;
@@ -432,9 +475,9 @@
             });
           };
 
-          syncPatients(hospital.waiting || [], group.userData.waitingRoom, 0xffd166, 'waiting');
-          syncPatients(hospital.treating || [], group.userData.treatingRoom, 0x93c5fd, 'treating');
-          syncPatients(hospital.discharged || [], group.userData.dischargedRoom, 0x6ee7b7, 'discharged');
+          syncPatients(hospital.waiting || [], group.userData.waitingRoom, 0xffd166, 'waiting', hospital.id);
+          syncPatients(hospital.treating || [], group.userData.treatingRoom, 0x93c5fd, 'treating', hospital.id);
+          syncPatients(hospital.discharged || [], group.userData.dischargedRoom, 0x6ee7b7, 'discharged', hospital.id);
 
           // Update label above hospital with counts
           upsertHospitalLabel(hospital.id, new THREE.Vector3(x + 2.2, 0.04, z - 2.8), {
