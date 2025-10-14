@@ -312,9 +312,9 @@
             };
 
             // Create three rooms placed to the right of the hospital to avoid overlap
-            const waitingRoom = makeRoom({ x: 2.2, z: 1.0 }, { x: 1.8, z: 1.0 }, 0xffb020);
-            const treatingRoom = makeRoom({ x: 2.2, z: 0.0 }, { x: 1.8, z: 1.2 }, 0x62b0ff);
-            const dischargedRoom = makeRoom({ x: 2.2, z: -1.0 }, { x: 1.8, z: 1.0 }, 0x16d39a);
+            const waitingRoom = makeRoom({ x: 2.2, z: 1.0 }, { x: 2.4, z: 1.3 }, 0xffb020);
+            const treatingRoom = makeRoom({ x: 2.2, z: 0.0 }, { x: 2.4, z: 1.6 }, 0x62b0ff);
+            const dischargedRoom = makeRoom({ x: 2.2, z: -1.0 }, { x: 2.4, z: 1.3 }, 0x16d39a);
 
             // Simple parking bays to the left of hospital
             const bayCount = 5;
@@ -392,8 +392,8 @@
           const group = ensureHospitalGroup(hospital, hospitalPos);
           const layoutGridInRoom = (room, idx) => {
             const cols = 3;
-            const gapX = Math.min(0.35, room.size.x / (cols + 1));
-            const gapZ = Math.min(0.35, room.size.z / (cols + 1));
+            const gapX = Math.min(0.42, room.size.x / (cols + 1));
+            const gapZ = Math.min(0.42, room.size.z / (cols + 1));
             const row = Math.floor(idx / cols);
             const col = idx % cols;
             const startX = room.center.x - (gapX * (cols - 1)) / 2;
@@ -407,18 +407,20 @@
               if (!token) {
                 // seated person: cylinder body + head sphere
                 const person = new THREE.Group();
-                const body = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.18, 14), new THREE.MeshStandardMaterial({ color: colorHex, emissive: colorHex, emissiveIntensity: 0.3 }));
-                body.position.y = 0.18;
-                const head = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffe0bd }));
-                head.position.y = 0.30;
+                const body = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.22, 14), new THREE.MeshStandardMaterial({ color: colorHex, emissive: colorHex, emissiveIntensity: 0.3 }));
+                body.position.y = 0.22;
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.085, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffe0bd }));
+                head.position.y = 0.36;
                 person.add(body, head);
                 person.castShadow = true; person.receiveShadow = true;
+                person.scale.set(1.0, 1.0, 1.0);
                 engineRef.current.scene.add(person);
                 token = person;
                 objectsRef.current.patientMeshes.set(p.id, person);
               } else {
                 // update emissive if exists
                 token.traverse((o) => { if (o.isMesh && o.material?.emissive) { o.material.emissive.setHex(colorHex); o.material.color?.setHex(colorHex); } });
+                token.scale.set(1.0, 1.0, 1.0);
               }
               const targetLocal = layoutGridInRoom(room, idx);
               const targetWorld = group.localToWorld(targetLocal.clone());
