@@ -447,17 +447,27 @@
           // Ensure hospital group and update patient tokens per queue
           const group = ensureHospitalGroup(hospital, hospitalPos);
           const layoutGridInRoom = (room, idx) => {
-            const cols = 3;
+            const cols = 3; // logical columns constraint
             const gapX = Math.min(0.42, room.size.x / (cols + 1));
             const gapZ = Math.min(0.42, room.size.z / (cols + 1));
-            const row = Math.floor(idx / cols);
-            const col = idx % cols;
-            const startX = room.center.x - (gapX * (cols - 1)) / 2;
             const isDown = room.zDirection === 'down';
-            // For default rooms, accumulate toward negative Z (up-right). For discharged, toward positive Z (down-right).
-            const startZ = isDown ? (room.center.z - room.size.z * 0.25) : (room.center.z + room.size.z * 0.25);
-            const z = isDown ? (startZ + row * gapZ) : (startZ - row * gapZ);
-            return new THREE.Vector3(startX + col * gapX, room.center.y, z);
+            if (isDown) {
+              // Three vertical columns (along Z), add new columns to the right as needed
+              const colZ = idx % cols;            // 0..2 going downward lanes
+              const rowX = Math.floor(idx / cols); // expands to the right
+              const startZ = room.center.z - room.size.z * 0.25; // top edge
+              const startX = room.center.x - room.size.x * 0.5 + gapX * 0.5; // left anchored
+              const x = startX + rowX * gapX;
+              const z = startZ + colZ * gapZ;
+              return new THREE.Vector3(x, room.center.y, z);
+            } else {
+              // Default: three columns across X, add rows toward -Z (upwards)
+              const row = Math.floor(idx / cols);
+              const col = idx % cols;
+              const startX = room.center.x - (gapX * (cols - 1)) / 2;
+              const startZ = room.center.z + room.size.z * 0.25; // front to back
+              return new THREE.Vector3(startX + col * gapX, room.center.y, startZ - row * gapZ);
+            }
           };
 
           const syncPatients = (patients, room, colorHex, status, hospitalId) => {
