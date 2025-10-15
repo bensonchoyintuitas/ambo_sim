@@ -34,7 +34,14 @@ logging.getLogger('engineio').setLevel(logging.WARNING)
 logging.getLogger('socketio').setLevel(logging.WARNING)
 
 app = Flask(__name__)
-socketio = SocketIO(app, logger=False, engineio_logger=False)
+socketio = SocketIO(
+    app,
+    logger=False,
+    engineio_logger=False,
+    cors_allowed_origins="*",
+    allow_upgrades=False,
+    transports=['polling']
+)
 
 # Configurable variables
 GLOBAL_MAX_PATIENTS_PER_HOSPITAL = 2  # Maximum patients that can be treated simultaneously in each hospital
@@ -69,6 +76,10 @@ class Condition:
     @classmethod
     def from_fhir(cls, fhir_condition):
         """Create a Condition object from a FHIR Condition resource"""
+        # If upstream generator returned nothing or invalid shape, gracefully bail
+        if not isinstance(fhir_condition, dict):
+            logging.warning("Condition.from_fhir received invalid/None payload; returning None")
+            return None
         try:
             logging.debug(f"Creating Condition from FHIR resource: {json.dumps(fhir_condition, indent=2)}")
             
@@ -97,7 +108,7 @@ class Condition:
             logging.error(f"Error creating Condition from FHIR: {str(e)}")
             logging.error(f"FHIR condition data: {json.dumps(fhir_condition, indent=2)}")
             logging.error(f"Traceback:", exc_info=True)
-            raise
+            return None
 
     def to_dict(self):
         """Convert Condition object to dictionary for JSON serialization"""
@@ -139,6 +150,7 @@ class Ambulance:
         self.queue_hospital_id = None  # If ramping, which hospital we're queued at
         self.ramp_since = None  # When the ambulance started ramping (epoch seconds)
         self.redirect_attempted = False  # Track if we've already tried redirecting once for current patient
+        self.last_arrived_hospital_id = None  # Prevent duplicate arrival logs while stationary at hospital
 
     def move_to(self, target_x, target_y):
         if self.x < target_x:
@@ -290,6 +302,70 @@ def log_event(message, event_type='general', attachments=None):
     else:
         # General log or other types can be handled here
         pass
+
+    # Persist event attachments that include JSON payloads with an 'eventType'
+    try:
+        if OUTPUT_FHIR and SESSION_DIR and attachments:
+            for att in attachments:
+                try:
+                    payload = att.get('json') if isinstance(att, dict) else None
+                except Exception:
+                    payload = None
+                if isinstance(payload, dict) and payload.get('eventType'):
+                    saved_path = save_event_payload(payload)
+                    if saved_path and isinstance(att, dict):
+                        try:
+                            att['preview'] = saved_path.replace('\\', '/')
+                        except Exception:
+                            pass
+    except Exception as e:
+        logging.error(f"Error saving event attachment JSON: {str(e)}")
+
+def save_event_payload(payload):
+    """Persist minimal event payloads (with 'eventType') to the session directory.
+    Directory layout: <SESSION_DIR>/event/<eventType>/event_<timestamp>.json
+    If a patient reference exists, include it in the filename for easier tracing.
+    """
+    if not OUTPUT_FHIR or SESSION_DIR is None:
+        return
+    try:
+        event_type = str(payload.get('eventType', 'event')).lower()
+        # Rename certain event types only for persistence
+        if event_type == 'location':
+            save_type = 'hospital_location'
+        elif event_type == 'redirect':
+            save_type = 'ambulance_redirect'
+        else:
+            save_type = event_type
+        event_dir = os.path.join(SESSION_DIR, 'event', save_type)
+        os.makedirs(event_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        # Try to extract a meaningful id from the payload
+        patient_ref = None
+        try:
+            patient = payload.get('patient') if isinstance(payload, dict) else None
+            if isinstance(patient, dict):
+                ref = patient.get('reference')
+                if isinstance(ref, str) and '/' in ref:
+                    patient_ref = ref.split('/')[-1]
+        except Exception:
+            patient_ref = None
+
+        filename_bits = ["event", save_type]
+        if patient_ref:
+            filename_bits.append(patient_ref)
+        filename_bits.append(timestamp)
+        filename = "_".join(filename_bits) + ".json"
+
+        filepath = os.path.join(event_dir, filename)
+        with open(filepath, 'w') as f:
+            json.dump(payload, f, indent=2)
+        logging.debug(f"Saved event payload to {filepath}")
+        return filepath
+    except Exception as e:
+        logging.error(f"Error saving event payload: {str(e)}")
+        return None
 
 def build_ambulance_event_attachment(event_kind, ambulance=None, patient=None, hospital_id=None, extra=None):
     """Create a minimal JSON payload for ambulance-related events."""
@@ -597,6 +673,17 @@ def generate_discharge_for_patient(hospital, patient):
 # Add thread pool for parallel patient generation
 patient_generator_pool = ThreadPoolExecutor(max_workers=8)
 
+def safe_submit(executor, fn, *args, **kwargs):
+    """Submit to ThreadPoolExecutor, ignoring submissions after shutdown.
+    Returns a Future or None if submission is not possible.
+    """
+    try:
+        return executor.submit(fn, *args, **kwargs)
+    except RuntimeError as e:
+        # Happens when executor is shutting down; log at debug to avoid noise
+        logging.debug(f"Skipped task submission during shutdown: {e}")
+        return None
+
 def create_patient(house, session_dir=None, llm_model=None):
     """Create a patient with either Synthea API or fallback, for both manual and automatic generation."""
     try:
@@ -722,6 +809,7 @@ def move_ambulances():
                         house.ambulance_on_the_way = True
                         closest_ambulance.patient = patient
                         closest_ambulance.redirect_attempted = False
+                        closest_ambulance.last_arrived_hospital_id = None
                         log_event(
                             f"Ambulance {closest_ambulance.id} is heading to House {house.id} to pick up {patient.name}",
                             event_type='ambulance',
@@ -764,6 +852,7 @@ def move_ambulances():
                                 next_ambulance.state = 'red'
                                 next_ambulance.patient = next((p for p in patients if p.id == patient_house.patient_ids[0]), None)
                                 next_ambulance.redirect_attempted = False
+                                next_ambulance.last_arrived_hospital_id = None
                                 log_event(
                                     f"Ambulance {next_ambulance.id} is heading to House {patient_house.id} to pick up Patient {next_ambulance.patient.id}",
                                     event_type='ambulance',
@@ -780,20 +869,57 @@ def move_ambulances():
                             event_type='ambulance',
                             attachments=build_ambulance_event_attachment('pickup_and_depart', ambulance=ambulance, patient=ambulance.patient, hospital_id=nearest_hospital.id, extra={'houseId': patient_house.id})
                         )
+                    elif patient_house and not patient_house.patient_ids:
+                        # Arrived at house but no patient to pick up -> idle event
+                        try:
+                            log_event(
+                                f"Ambulance {ambulance.id} arrived at House {patient_house.id} but no patient found (idle)",
+                                event_type='ambulance',
+                                attachments=build_ambulance_event_attachment('idle', ambulance=ambulance, patient=None, hospital_id=None, extra={'houseId': patient_house.id})
+                            )
+                        except Exception:
+                            pass
+                        ambulance.is_available = True
+                        ambulance.state = 'green'
+                        ambulance.target = None
+                        ambulance.patient = None
+                        ambulance.queue_hospital_id = None
+                        ambulance.redirect_attempted = False
                     elif ambulance.x == ambulance.target[0] and ambulance.y == ambulance.target[1]:
                         # If ambulance reached the hospital
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
                         patient = ambulance.patient  # may be None
+                        # Emit arrival event at hospital for any ambulance
+                        try:
+                            if getattr(ambulance, 'last_arrived_hospital_id', None) != nearest_hospital.id:
+                                log_event(
+                                    f"Ambulance {ambulance.id} arrived at Hospital {nearest_hospital.id}",
+                                    event_type='ambulance',
+                                    attachments=build_ambulance_event_attachment('arrive_hospital', ambulance=ambulance, patient=patient, hospital_id=nearest_hospital.id)
+                                )
+                                ambulance.last_arrived_hospital_id = nearest_hospital.id
+                        except Exception:
+                            pass
                         if patient:
                             # If waiting room has capacity, drop patient; otherwise consider redirect or ramp outside
                             if len(nearest_hospital.waiting) < HOSPITAL_WAITING_CAPACITY:
                                 nearest_hospital.add_patient_to_waiting(patient)
+                                # Emit off_stretcher event when patient enters waiting
+                                try:
+                                    log_event(
+                                        f"Ambulance {ambulance.id} off stretcher at Hospital {nearest_hospital.id} for {patient.name}",
+                                        event_type='ambulance',
+                                        attachments=build_ambulance_event_attachment('off_stretcher', ambulance=ambulance, patient=patient, hospital_id=nearest_hospital.id)
+                                    )
+                                except Exception:
+                                    pass
                                 ambulance.is_available = True
                                 ambulance.state = 'green'
                                 ambulance.target = None
                                 ambulance.patient = None
                                 ambulance.queue_hospital_id = None
                                 ambulance.redirect_attempted = False
+                                ambulance.last_arrived_hospital_id = None
                             else:
                                 # Waiting full: optional redirection
                                 if RAMP_REDIRECT_ENABLED and len(hospitals) > 1 and not getattr(ambulance, 'redirect_attempted', False):
@@ -841,6 +967,7 @@ def move_ambulances():
                             ambulance.target = None
                             ambulance.queue_hospital_id = None
                             ambulance.redirect_attempted = False
+                        ambulance.last_arrived_hospital_id = None
 
         socketio.emit('update_state', get_state())
         time.sleep(0.05)  # Reduce the sleep time to make the simulation feel faster
@@ -1147,7 +1274,7 @@ def manage_hospital_queues():
                             moved_patient = hospital.move_patient_to_treating()
                             if moved_patient:
                                 # Use ThreadPoolExecutor to process encounters concurrently
-                                patient_generator_pool.submit(process_patient_encounter, hospital, moved_patient)
+                                safe_submit(patient_generator_pool, process_patient_encounter, hospital, moved_patient)
 
                 # Process treating patients
                 for patient in list(hospital.treating):
@@ -1156,9 +1283,10 @@ def manage_hospital_queues():
                         discharged_patient = hospital.discharge_patient()
                         if discharged_patient:
                             # Process discharge in thread pool as well
-                            patient_generator_pool.submit(
-                                generate_discharge_for_patient, 
-                                hospital, 
+                            safe_submit(
+                                patient_generator_pool,
+                                generate_discharge_for_patient,
+                                hospital,
                                 discharged_patient
                             )
 
@@ -1172,6 +1300,15 @@ def manage_hospital_queues():
                         event_type='ambulance',
                         attachments=(build_ambulance_event_attachment('offload', ambulance=amb, patient=amb.patient, hospital_id=hospital.id) or []) + (build_location_attachment(hospital.id, 'waiting', amb.patient) or [])
                     )
+                    # Also emit an off_stretcher event when ramp offload moves patient into waiting
+                    try:
+                        log_event(
+                            f"Ambulance {amb.id} off stretcher at Hospital {hospital.id} for {amb.patient.name}",
+                            event_type='ambulance',
+                            attachments=build_ambulance_event_attachment('off_stretcher', ambulance=amb, patient=amb.patient, hospital_id=hospital.id)
+                        )
+                    except Exception:
+                        pass
                     amb.is_available = True
                     amb.state = 'green'
                     amb.patient = None
@@ -1189,6 +1326,13 @@ def log_hospital_event(message):
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/favicon.ico')
+def favicon():
+    try:
+        return app.send_static_file('ambulance.png')
+    except Exception:
+        return ("", 204)
 
 @socketio.on('connect')
 def handle_connect():
