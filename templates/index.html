@@ -369,6 +369,8 @@
             const treatingRoom = makeRoom({ x: 2.2, z: 0.0 }, { x: 2.4, z: 1.6 }, 0x62b0ff);
             // Discharged room aligned vertically below treating
             const dischargedRoom = makeRoom({ x: 2.2, z: -1.0 }, { x: 2.4, z: 1.3 }, 0x16d39a);
+            // Visually drop discharged tokens slightly below others
+            dischargedRoom.center.y = 0.18;
             // For discharged patients, accumulate rows toward positive Z (down in isometric)
             dischargedRoom.zDirection = 'down';
 
@@ -455,8 +457,9 @@
               // Three vertical columns (along Z), add new columns to the right as needed
               const colZ = idx % cols;            // 0..2 going downward lanes
               const rowX = Math.floor(idx / cols); // expands to the right
-              const startZ = room.center.z - room.size.z * 0.25; // top edge
-              const startX = room.center.x - room.size.x * 0.5 + gapX * 0.5; // left anchored
+              // Offset down and right by one step to avoid the top row appearing to float at the edge
+              const startZ = (room.center.z - room.size.z * 0.25) + gapZ; // skip top row
+              const startX = (room.center.x - room.size.x * 0.5 + gapX * 0.5) + gapX; // shift right one step
               const x = startX + rowX * gapX;
               const z = startZ + colZ * gapZ;
               return new THREE.Vector3(x, room.center.y, z);
@@ -495,6 +498,10 @@
               token.userData.patient = { id: p.id, name: p.name, condition: p.condition, wait_time: p.wait_time, status, hospitalId };
               const targetLocal = layoutGridInRoom(room, idx);
               const targetWorld = group.localToWorld(targetLocal.clone());
+              if (status === 'discharged') {
+                // Nudge discharged tokens down so they visually stand on the room floor
+                targetWorld.y -= 0.18;
+              }
               token.userData.target = targetWorld;
               if (!token.position || token.position.lengthSq() === 0) {
                 token.position.copy(targetWorld);
