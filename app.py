@@ -172,7 +172,11 @@ class Hospital:
 
     def add_patient_to_waiting(self, patient):
         self.waiting.append(patient)
-        log_event(f"{patient.name} has arrived at Hospital {self.id} and entered waiting queue", event_type='hospital')
+        log_event(
+            f"{patient.name} has arrived at Hospital {self.id} and entered waiting queue",
+            event_type='hospital',
+            attachments=build_location_attachment(self.id, 'waiting', patient)
+        )
 
     def move_patient_to_treating(self):
         if self.waiting and len(self.treating) < GLOBAL_MAX_PATIENTS_PER_HOSPITAL:
@@ -183,7 +187,8 @@ class Hospital:
                 cond = patient.condition.code.get('display', 'Unknown') if patient and patient.condition else 'Unknown'
                 log_event(
                     f"{patient.name} moved to treating list | Hospital {self.id} | Condition: {cond}",
-                    event_type='hospital'
+                    event_type='hospital',
+                    attachments=build_location_attachment(self.id, 'treating', patient)
                 )
             except Exception:
                 pass
@@ -205,7 +210,7 @@ class Hospital:
                 f"Treatment duration: {patient.wait_time} seconds"
             )
             try:
-                # Minimal JSON payload for discharge signal
+                # Minimal JSON payload for discharge signal (consolidated with location reference)
                 now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 # Prefer explicitly tracked latest encounter id; fallback to last encounter in list
                 last_enc = None
@@ -216,11 +221,18 @@ class Hospital:
                 attachment = {
                     'eventType': 'discharge',
                     'timestamp': now_iso,
-                    'hospitalId': self.id,
+                    'location': {
+                        'reference': f"Location/hospital{self.id}",
+                        'room': 'discharged'
+                    },
                     'patient': { 'reference': f"Patient/{patient.id}", 'display': patient.name },
                     'encounter': ({ 'reference': f"Encounter/{last_enc.get('id')}" } if isinstance(last_enc, dict) and last_enc.get('id') else None)
                 }
-                log_event(discharge_details, event_type='hospital', attachments=[{ 'label': 'Discharge', 'json': attachment }])
+                log_event(
+                    discharge_details,
+                    event_type='hospital',
+                    attachments=([{ 'label': 'Discharge', 'json': attachment }] + (build_location_attachment(self.id, 'discharged', patient) or []))
+                )
             except Exception:
                 log_event(discharge_details, event_type='hospital')
             return patient
@@ -299,6 +311,25 @@ def build_ambulance_event_attachment(event_kind, ambulance=None, patient=None, h
         if isinstance(extra, dict):
             payload.update(extra)
         return [{ 'label': 'Event', 'json': payload }]
+    except Exception:
+        return None
+
+def build_location_attachment(hospital_id, room, patient=None):
+    """Create a minimal location payload: where in the hospital the patient is (ramp/waiting/treating)."""
+    try:
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        payload = {
+            'eventType': 'location',
+            'timestamp': now_iso,
+            'hospitalId': hospital_id,
+            'room': room
+        }
+        if patient is not None:
+            try:
+                payload['patient'] = { 'reference': f"Patient/{patient.id}", 'display': patient.name }
+            except Exception:
+                pass
+        return [{ 'label': 'Location', 'json': payload }]
     except Exception:
         return None
 
@@ -818,6 +849,31 @@ def validate_encounter_data(encounter):
         logging.debug(f"Raw encounter data: {encounter}")
         return required_structure
 
+
+def add_simple_location_to_encounter(encounter, hospital_id):
+    """Ensure Encounter.location includes a simple hospital location entry.
+    Reference format: Location/hospital{hospital_id}
+    """
+    try:
+        if not isinstance(encounter, dict):
+            return encounter
+        current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        location_entry = {
+            'location': {
+                'reference': f"Location/hospital{hospital_id}",
+                'display': f"Hospital {hospital_id} Emergency Department"
+            },
+            'status': 'active',
+            'period': {
+                'start': current_time
+            }
+        }
+        # Overwrite or set location to the simple entry to keep consistent
+        encounter['location'] = [location_entry]
+        return encounter
+    except Exception:
+        return encounter
+
 class RequestCounter:
     def __init__(self):
         self._count = 0
@@ -867,13 +923,13 @@ def process_patient_encounter(hospital, patient):
             # Save the LLM-generated encounter if FHIR output is enabled
             if OUTPUT_FHIR and SESSION_DIR and encounter_dict:
                 try:
-                    save_fhir_resource('encounter_ed_presentation', encounter_dict)
+                    save_fhir_resource('encounter_ed_presentation', add_simple_location_to_encounter(encounter_dict, hospital.id))
                     logging.info(f"Saved encounter FHIR resource for encounter {encounter_dict.get('id', 'unknown')}")
                 except Exception as e:
                     logging.error(f"Error saving encounter FHIR resource: {str(e)}")
             
             if encounter_dict:
-                patient.encounters.append(encounter_dict)
+                patient.encounters.append(add_simple_location_to_encounter(encounter_dict, hospital.id))
                 try:
                     if isinstance(encounter_dict, dict) and encounter_dict.get('id'):
                         patient.latest_encounter_id = encounter_dict.get('id')
@@ -883,7 +939,7 @@ def process_patient_encounter(hospital, patient):
                     log_event(
                         f"ED presentation created for {patient.name} | Hospital {hospital.id}",
                         event_type='hospital',
-                        attachments=[{'label': 'ED Presentation', 'json': validate_encounter_data(encounter_dict)}]
+                        attachments=[{'label': 'ED Presentation', 'json': validate_encounter_data(add_simple_location_to_encounter(encounter_dict, hospital.id))}]
                     )
                 except Exception:
                     pass
@@ -899,7 +955,7 @@ def process_patient_encounter(hospital, patient):
         # Save the fallback encounter if FHIR output is enabled
         if OUTPUT_FHIR and SESSION_DIR and fallback_encounter:
             try:
-                save_fhir_resource('encounter_ed_presentation', fallback_encounter)
+                save_fhir_resource('encounter_ed_presentation', add_simple_location_to_encounter(fallback_encounter, hospital.id))
                 logging.info(f"Saved encounter FHIR resource for encounter {fallback_encounter.get('id', 'unknown')}")
             except Exception as e:
                 logging.error(f"Error saving encounter FHIR resource: {str(e)}")
@@ -914,7 +970,7 @@ def process_patient_encounter(hospital, patient):
                 log_event(
                     f"ED presentation created for {patient.name} | Hospital {hospital.id}",
                     event_type='hospital',
-                    attachments=[{'label': 'ED Presentation', 'json': validate_encounter_data(fallback_encounter)}]
+                    attachments=[{'label': 'ED Presentation', 'json': validate_encounter_data(add_simple_location_to_encounter(fallback_encounter, hospital.id))}]
                 )
             except Exception:
                 pass
@@ -1000,7 +1056,7 @@ def manage_hospital_queues():
                     log_event(
                         f"Ambulance {amb.id} offloaded patient {amb.patient.name} at Hospital {hospital.id}",
                         event_type='ambulance',
-                        attachments=build_ambulance_event_attachment('offload', ambulance=amb, patient=amb.patient, hospital_id=hospital.id)
+                        attachments=(build_ambulance_event_attachment('offload', ambulance=amb, patient=amb.patient, hospital_id=hospital.id) or []) + (build_location_attachment(hospital.id, 'waiting', amb.patient) or [])
                     )
                     amb.is_available = True
                     amb.state = 'green'
