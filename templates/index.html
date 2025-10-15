@@ -367,7 +367,8 @@
             // Create three rooms placed to the right of the hospital to avoid overlap
             const waitingRoom = makeRoom({ x: 2.2, z: 1.0 }, { x: 2.4, z: 1.3 }, 0xffb020);
             const treatingRoom = makeRoom({ x: 2.2, z: 0.0 }, { x: 2.4, z: 1.6 }, 0x62b0ff);
-            const dischargedRoom = makeRoom({ x: 2.2, z: -1.0 }, { x: 2.4, z: 1.3 }, 0x16d39a);
+            // Move discharged room to bottom-right diagonal (further right and down)
+            const dischargedRoom = makeRoom({ x: 3.2, z: -1.6 }, { x: 2.4, z: 1.3 }, 0x16d39a);
 
             // Simple parking bays to the left of hospital
             const bayCount = 5;
@@ -702,7 +703,7 @@
       const closeJson = () => { setModalOpen(false); setModalPayload(null); };
       const [showConfig, setShowConfig] = useState(true);
       const [starting, setStarting] = useState(false);
-      const [form, setForm] = useState({ ambulances: 5, houses: 10, hospitals: 3, waiting_time: 2, treating_time: 40, gen_min: 5, gen_max: 10 });
+      const [form, setForm] = useState({ ambulances: 5, houses: 10, hospitals: 3, waiting_time: 2, treating_time: 40, gen_min: 5, gen_max: 10, ramp_redirect: true });
 
       const formatDuration = (totalSeconds) => {
         const sec = Math.max(0, Math.floor(totalSeconds || 0));
@@ -841,19 +842,51 @@
                       <input type="number" min="0" value={form.treating_time}
                         onChange={(e)=>setForm({...form, treating_time: parseInt(e.target.value||'0',10)})} />
                     </label>
+                    {/* Compact generation window row with validation */}
                     <label>
-                      <span>Gen min (s)</span>
-                      <input type="number" min="0" value={form.gen_min}
-                        onChange={(e)=>setForm({...form, gen_min: parseInt(e.target.value||'0',10)})} />
+                      <span>Generation window</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
+                        <input
+                          type="number"
+                          min="1"
+                          value={form.gen_min}
+                          aria-label="Generation min seconds"
+                          aria-invalid={!(form.gen_min >= 1)}
+                          onChange={(e)=>{
+                            const v = Math.max(1, parseInt(e.target.value||'1',10));
+                            setForm({ ...form, gen_min: v });
+                          }}
+                          style={{ width: '80px' }}
+                        />
+                        <span>to</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={form.gen_max}
+                          aria-label="Generation max seconds"
+                          aria-invalid={!(form.gen_max >= 1 && form.gen_max > form.gen_min)}
+                          onChange={(e)=>{
+                            const v = Math.max(1, parseInt(e.target.value||'1',10));
+                            setForm({ ...form, gen_max: v });
+                          }}
+                          style={{ width: '80px' }}
+                        />
+                        <span>sec</span>
+                      </div>
+                      {!(form.gen_min >= 1 && form.gen_max >= 1 && form.gen_max > form.gen_min) && (
+                        <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '6px' }}>
+                          Max must be greater than min, both must be greater than 0
+                        </div>
+                      )}
                     </label>
                     <label>
-                      <span>Gen max (s)</span>
-                      <input type="number" min="0" value={form.gen_max}
-                        onChange={(e)=>setForm({...form, gen_max: parseInt(e.target.value||'0',10)})} />
+                      <span>Ramp redirection</span>
+                      <input type="checkbox" checked={!!form.ramp_redirect}
+                        onChange={(e)=>setForm({...form, ramp_redirect: !!e.target.checked})} />
                     </label>
                   </div>
                   <div className="splash-actions">
-                    <button className="btn" onClick={()=>{
+                    <button className="btn" disabled={!(form.gen_min >= 1 && form.gen_max >= 1 && form.gen_max > form.gen_min)} onClick={()=>{
                       emit.applyConfig(form);
                       setStarting(true);
                     }}>Start</button>

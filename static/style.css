@@ -106,7 +106,8 @@ body {
 .splash-title { font-weight: 600; margin-bottom: 12px; font-size: 16px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .grid2 label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
-.grid2 input { appearance: none; background: #111723; color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 10px; padding: 8px 10px; }
+.grid2 input:not([type="checkbox"]) { appearance: none; background: #111723; color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 10px; padding: 8px 10px; }
+.grid2 input[type="checkbox"] { appearance: auto; width: 18px; height: 18px; align-self: flex-start; accent-color: #3b82f6; }
 .splash-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
 
 /* Log line with links */

@@ -49,6 +49,8 @@ FHIR_OUTPUT_DIR = "fhir_export"  # Base directory for FHIR outputs
 SESSION_DIR = None  # Will be set at runtime if OUTPUT_FHIR is True
 HOSPITAL_WAITING_CAPACITY = 6  # Maximum patients allowed in a hospital waiting room
 LOG_CAPACITY = 50  # Max events to retain in each UI log
+RAMP_REDIRECT_ENABLED = True  # Whether to redirect to another hospital instead of ramping (default on)
+RAMP_REDIRECT_ENABLED = False  # Whether to redirect instead of ramping when waiting is full
 
 class Condition:
     def __init__(self, id, clinical_status, verification_status, severity, category, 
@@ -136,6 +138,7 @@ class Ambulance:
         self.patient = None  # Store the entire Patient object
         self.queue_hospital_id = None  # If ramping, which hospital we're queued at
         self.ramp_since = None  # When the ambulance started ramping (epoch seconds)
+        self.redirect_attempted = False  # Track if we've already tried redirecting once for current patient
 
     def move_to(self, target_x, target_y):
         if self.x < target_x:
@@ -310,7 +313,38 @@ def build_ambulance_event_attachment(event_kind, ambulance=None, patient=None, h
             payload['hospitalId'] = hospital_id
         if isinstance(extra, dict):
             payload.update(extra)
-        return [{ 'label': 'Event', 'json': payload }]
+        # Create a more meaningful label from the event kind (e.g., 'pickup_and_depart' -> 'Pickup and Depart')
+        try:
+            label = (str(event_kind or 'Event').replace('_', ' ').strip().title())
+        except Exception:
+            label = 'Event'
+        return [{ 'label': label, 'json': payload }]
+    except Exception:
+        return None
+
+def build_redirect_attachment(ambulance=None, patient=None, from_hospital_id=None, to_hospital_id=None, extra=None):
+    """Attachment helper for redirect events with a dedicated 'Redirect' label."""
+    try:
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        payload = {
+            'eventType': 'redirect',
+            'timestamp': now_iso,
+            'fromHospitalId': from_hospital_id,
+            'toHospitalId': to_hospital_id
+        }
+        if ambulance is not None:
+            payload['ambulance'] = {
+                'id': getattr(ambulance, 'id', None),
+                'state': getattr(ambulance, 'state', None)
+            }
+        if patient is not None:
+            try:
+                payload['patient'] = { 'reference': f"Patient/{patient.id}", 'display': patient.name }
+            except Exception:
+                pass
+        if isinstance(extra, dict):
+            payload.update(extra)
+        return [{ 'label': 'Redirect', 'json': payload }]
     except Exception:
         return None
 
@@ -330,6 +364,32 @@ def build_location_attachment(hospital_id, room, patient=None):
             except Exception:
                 pass
         return [{ 'label': 'Location', 'json': payload }]
+    except Exception:
+        return None
+
+def build_redirect_attachment(ambulance, patient, from_hospital_id, to_hospital_id, extra=None):
+    """Create a JSON payload describing an ambulance redirect due to ramping."""
+    try:
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        payload = {
+            'eventType': 'redirect',
+            'timestamp': now_iso,
+            'fromHospitalId': from_hospital_id,
+            'toHospitalId': to_hospital_id
+        }
+        if ambulance is not None:
+            payload['ambulance'] = {
+                'id': getattr(ambulance, 'id', None),
+                'state': getattr(ambulance, 'state', None)
+            }
+        if patient is not None:
+            try:
+                payload['patient'] = { 'reference': f"Patient/{patient.id}", 'display': patient.name }
+            except Exception:
+                pass
+        if isinstance(extra, dict):
+            payload.update(extra)
+        return [{ 'label': 'Redirect', 'json': payload }]
     except Exception:
         return None
 
@@ -661,6 +721,7 @@ def move_ambulances():
                         closest_ambulance.state = 'red'  # Heading to pick up a patient
                         house.ambulance_on_the_way = True
                         closest_ambulance.patient = patient
+                        closest_ambulance.redirect_attempted = False
                         log_event(
                             f"Ambulance {closest_ambulance.id} is heading to House {house.id} to pick up {patient.name}",
                             event_type='ambulance',
@@ -702,6 +763,7 @@ def move_ambulances():
                                 next_ambulance.target = (patient_house.x, patient_house.y)
                                 next_ambulance.state = 'red'
                                 next_ambulance.patient = next((p for p in patients if p.id == patient_house.patient_ids[0]), None)
+                                next_ambulance.redirect_attempted = False
                                 log_event(
                                     f"Ambulance {next_ambulance.id} is heading to House {patient_house.id} to pick up Patient {next_ambulance.patient.id}",
                                     event_type='ambulance',
@@ -723,7 +785,7 @@ def move_ambulances():
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
                         patient = ambulance.patient  # may be None
                         if patient:
-                            # If waiting room has capacity, drop patient; otherwise ramp outside
+                            # If waiting room has capacity, drop patient; otherwise consider redirect or ramp outside
                             if len(nearest_hospital.waiting) < HOSPITAL_WAITING_CAPACITY:
                                 nearest_hospital.add_patient_to_waiting(patient)
                                 ambulance.is_available = True
@@ -731,24 +793,54 @@ def move_ambulances():
                                 ambulance.target = None
                                 ambulance.patient = None
                                 ambulance.queue_hospital_id = None
+                                ambulance.redirect_attempted = False
                             else:
-                                # Ramp: keep patient on board, mark ambulance waiting outside.
-                                ambulance.is_available = False
-                                ambulance.queue_hospital_id = nearest_hospital.id
-                                if ambulance.state != 'orange' or not ambulance.ramp_since:
-                                    ambulance.state = 'orange'
-                                    ambulance.ramp_since = time.time()
-                                    log_event(
-                                        f"Ambulance {ambulance.id} waiting to offload at Hospital {nearest_hospital.id} (waiting full)",
-                                        event_type='ambulance',
-                                        attachments=build_ambulance_event_attachment('ramping', ambulance=ambulance, patient=ambulance.patient, hospital_id=nearest_hospital.id)
-                                    )
+                                # Waiting full: optional redirection
+                                if RAMP_REDIRECT_ENABLED and len(hospitals) > 1 and not getattr(ambulance, 'redirect_attempted', False):
+                                    from_hid = nearest_hospital.id
+                                    candidate, ramp_len = choose_best_redirect_hospital(from_hid, ambulance.x, ambulance.y)
+                                    if candidate is not None:
+                                        ambulance.target = (candidate.x, candidate.y)
+                                        ambulance.state = 'yellow'
+                                        ambulance.queue_hospital_id = None
+                                        ambulance.ramp_since = None
+                                        ambulance.redirect_attempted = True
+                                        log_event(
+                                            f"Redirecting ambulance {ambulance.id} from hospital {from_hid} to hospital {candidate.id} due to ramping",
+                                            event_type='ambulance',
+                                            attachments=build_redirect_attachment(ambulance=ambulance, patient=ambulance.patient, from_hospital_id=from_hid, to_hospital_id=candidate.id, extra={'toRampQueue': ramp_len})
+                                        )
+                                    else:
+                                        # Fallback to ramp if no candidates (should not happen)
+                                        ambulance.is_available = False
+                                        ambulance.queue_hospital_id = nearest_hospital.id
+                                        if ambulance.state != 'orange' or not ambulance.ramp_since:
+                                            ambulance.state = 'orange'
+                                            ambulance.ramp_since = time.time()
+                                            log_event(
+                                                f"Ambulance {ambulance.id} waiting to offload at Hospital {nearest_hospital.id} (waiting full)",
+                                                event_type='ambulance',
+                                                attachments=build_ambulance_event_attachment('ramping', ambulance=ambulance, patient=ambulance.patient, hospital_id=nearest_hospital.id)
+                                            )
+                                else:
+                                    # Ramp: keep patient on board, mark ambulance waiting outside.
+                                    ambulance.is_available = False
+                                    ambulance.queue_hospital_id = nearest_hospital.id
+                                    if ambulance.state != 'orange' or not ambulance.ramp_since:
+                                        ambulance.state = 'orange'
+                                        ambulance.ramp_since = time.time()
+                                        log_event(
+                                            f"Ambulance {ambulance.id} waiting to offload at Hospital {nearest_hospital.id} (waiting full)",
+                                            event_type='ambulance',
+                                            attachments=build_ambulance_event_attachment('ramping', ambulance=ambulance, patient=ambulance.patient, hospital_id=nearest_hospital.id)
+                                        )
                         else:
                             # No patient attached, reset ambulance to available state
                             ambulance.is_available = True
                             ambulance.state = 'green'
                             ambulance.target = None
                             ambulance.queue_hospital_id = None
+                            ambulance.redirect_attempted = False
 
         socketio.emit('update_state', get_state())
         time.sleep(0.05)  # Reduce the sleep time to make the simulation feel faster
@@ -757,6 +849,28 @@ def find_nearest_hospital(x, y):
     """Find the nearest hospital to the given coordinates."""
     nearest_hospital = min(hospitals, key=lambda h: calculate_distance(x, y, h.x, h.y))
     return nearest_hospital
+
+def choose_best_redirect_hospital(current_hospital_id, from_x, from_y):
+    """Choose the next nearest hospital with the smallest ramping queue.
+    Excludes the current hospital. Only returns hospitals with available waiting capacity.
+    Returns tuple (hospital, ramp_queue_len) or (None, None).
+    """
+    if not hospitals or len(hospitals) <= 1:
+        return (None, None)
+    # Compute ramping queue lengths per hospital
+    ramp_counts = {}
+    for h in hospitals:
+        ramp_counts[h.id] = sum(1 for a in ambulances if a.state == 'orange' and a.queue_hospital_id == h.id and a.patient)
+    # Candidate hospitals MUST have capacity in waiting
+    candidates = [h for h in hospitals if h.id != current_hospital_id and len(h.waiting) < HOSPITAL_WAITING_CAPACITY]
+    if not candidates:
+        return (None, None)
+    # Rank by: ramp queue len, then distance (all have space)
+    def rank(h):
+        distance = calculate_distance(from_x, from_y, h.x, h.y)
+        return (ramp_counts.get(h.id, 0), distance)
+    best = min(candidates, key=rank)
+    return (best, ramp_counts.get(best.id, 0))
 
 def get_state():
     """Returns the state of ambulances, houses, and hospitals."""
@@ -1063,6 +1177,7 @@ def manage_hospital_queues():
                     amb.patient = None
                     amb.queue_hospital_id = None
                     amb.ramp_since = None
+                    amb.redirect_attempted = False
 
         socketio.emit('update_state', get_state())
         time.sleep(1)
@@ -1214,6 +1329,7 @@ def handle_reset_simulation():
 def handle_apply_config(data):
     """Apply runtime configuration from the client splash screen and restart world."""
     try:
+        global RAMP_REDIRECT_ENABLED
         house_count = int(data.get('houses', DEFAULT_HOUSES))
         hospital_count = int(data.get('hospitals', DEFAULT_HOSPITALS))
         ambulance_count = int(data.get('ambulances', DEFAULT_AMBULANCES))
@@ -1221,6 +1337,7 @@ def handle_apply_config(data):
         treating_time = int(data.get('treating_time', TREATING_TIME))
         gen_min = int(data.get('gen_min', PATIENT_GENERATION_LOWER_BOUND))
         gen_max = int(data.get('gen_max', PATIENT_GENERATION_UPPER_BOUND))
+        RAMP_REDIRECT_ENABLED = bool(data.get('ramp_redirect', False))
     except Exception:
         house_count = DEFAULT_HOUSES
         hospital_count = DEFAULT_HOSPITALS
@@ -1229,6 +1346,7 @@ def handle_apply_config(data):
         treating_time = TREATING_TIME
         gen_min = PATIENT_GENERATION_LOWER_BOUND
         gen_max = PATIENT_GENERATION_UPPER_BOUND
+        RAMP_REDIRECT_ENABLED = False
 
     reset_simulation(house_count=house_count,
                      hospital_count=hospital_count,
