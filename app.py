@@ -231,22 +231,26 @@ patient_event_log = []
 ambulance_event_log = []
 hospital_event_log = []
 
-def log_event(message, event_type='general'):
+def log_event(message, event_type='general', attachments=None):
     timestamp = datetime.now().strftime('%H:%M:%S')
     log_message = f"{timestamp} - {message}"
+    event_obj = {'text': log_message}
+    if attachments:
+        # Keep attachments small if needed in the future; for now pass through
+        event_obj['attachments'] = attachments
     
     if event_type == 'patient':
-        patient_event_log.insert(0, log_message)
+        patient_event_log.insert(0, event_obj)
         if len(patient_event_log) > LOG_CAPACITY:
             patient_event_log.pop()
         socketio.emit('update_patient_log', patient_event_log)
     elif event_type == 'ambulance':
-        ambulance_event_log.insert(0, log_message)
+        ambulance_event_log.insert(0, event_obj)
         if len(ambulance_event_log) > LOG_CAPACITY:
             ambulance_event_log.pop()
         socketio.emit('update_ambulance_log', ambulance_event_log)
     elif event_type == 'hospital':
-        hospital_event_log.insert(0, log_message)
+        hospital_event_log.insert(0, event_obj)
         if len(hospital_event_log) > LOG_CAPACITY:
             hospital_event_log.pop()
         socketio.emit('update_hospital_log', hospital_event_log)
@@ -363,6 +367,27 @@ def generate_fallback_condition(patient_id):
             logging.error(f"Error saving condition FHIR resource: {str(e)}")
     
     return condition
+
+def condition_to_fhir_dict(condition_obj):
+    """Convert a Condition object back to a FHIR Condition resource dict."""
+    if condition_obj is None:
+        return None
+    try:
+        return {
+            "resourceType": "Condition",
+            "id": condition_obj.id,
+            "clinicalStatus": {"coding": [condition_obj.clinical_status]},
+            "verificationStatus": {"coding": [condition_obj.verification_status]},
+            "severity": {"coding": [condition_obj.severity]},
+            "category": [{"coding": [condition_obj.category]}],
+            "code": {"coding": [condition_obj.code]},
+            "subject": {"reference": condition_obj.subject_reference},
+            "onsetDateTime": condition_obj.onset_datetime,
+            "recordedDate": condition_obj.recorded_date,
+            "note": ([{"text": condition_obj.note}] if condition_obj.note else [])
+        }
+    except Exception:
+        return None
 
 def generate_fallback_encounter(patient_id, condition_id, hospital_id):
     """Generate a basic encounter without using LLM."""
@@ -511,8 +536,24 @@ def create_patient(house, session_dir=None, llm_model=None):
         
         if condition.note:
             log_parts.append(f"Notes: {condition.note}")
-        
-        log_event(" | ".join(log_parts), event_type='patient')
+
+        # Attach FHIR JSON for patient and condition
+        attachments = []
+        try:
+            if isinstance(patient_resource, dict) and patient_resource:
+                attachments.append({'label': 'Patient', 'json': patient_resource})
+        except Exception:
+            pass
+        try:
+            condition_fhir = condition_to_fhir_dict(condition) if isinstance(condition, Condition) else None
+            if not condition_fhir and 'condition_dict' in locals():
+                condition_fhir = condition_dict
+            if condition_fhir:
+                attachments.append({'label': 'Condition', 'json': condition_fhir})
+        except Exception:
+            pass
+
+        log_event(" | ".join(log_parts), event_type='patient', attachments=attachments)
         return patient
         
     except Exception as e:
@@ -762,6 +803,14 @@ def process_patient_encounter(hospital, patient):
             
             if encounter_dict:
                 patient.encounters.append(encounter_dict)
+                try:
+                    log_event(
+                        f"ED presentation created for {patient.name} | Hospital {hospital.id}",
+                        event_type='hospital',
+                        attachments=[{'label': 'ED Presentation', 'json': validate_encounter_data(encounter_dict)}]
+                    )
+                except Exception:
+                    pass
                 return encounter_dict
             
         # Use existing fallback logic if LLM fails or is disabled
@@ -779,6 +828,15 @@ def process_patient_encounter(hospital, patient):
             except Exception as e:
                 logging.error(f"Error saving encounter FHIR resource: {str(e)}")
             
+        if fallback_encounter:
+            try:
+                log_event(
+                    f"ED presentation created for {patient.name} | Hospital {hospital.id}",
+                    event_type='hospital',
+                    attachments=[{'label': 'ED Presentation', 'json': validate_encounter_data(fallback_encounter)}]
+                )
+            except Exception:
+                pass
         return fallback_encounter
             
     except Exception as e:
@@ -917,14 +975,28 @@ def handle_create_patient_at_house(data):
         patients.append(patient)
         house.add_patient(patient.id)
         
-        # Log patient creation
+        # Log patient creation with attachments
+        attachments = []
+        try:
+            if isinstance(patient_resource, dict) and patient_resource:
+                attachments.append({'label': 'Patient', 'json': patient_resource})
+        except Exception:
+            pass
+        try:
+            cond_fhir = condition_to_fhir_dict(condition)
+            if cond_fhir:
+                attachments.append({'label': 'Condition', 'json': cond_fhir})
+        except Exception:
+            pass
+
         log_event(
             f"Patient Generated (Fallback): "
             f"ID: {patient.id} | "
             f"Name: {patient.name} | "
             f"Condition: {condition.code.get('display', 'Unknown')} | "
             f"Severity: {condition.severity.get('display', 'Unknown')}",
-            event_type='patient'
+            event_type='patient',
+            attachments=attachments
         )
         
         socketio.emit('update_state', get_state())

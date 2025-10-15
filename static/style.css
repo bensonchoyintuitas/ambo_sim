@@ -108,3 +108,18 @@ body {
 .grid2 label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
 .grid2 input { appearance: none; background: #111723; color: #fff; border: 1px solid rgba(255,255,255,0.16); border-radius: 10px; padding: 8px 10px; }
 .splash-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+
+/* Log line with links */
+.log-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.log-text { flex: 1 1 auto; }
+.log-links { flex: 0 0 auto; display: inline-flex; gap: 8px; }
+.link-btn { appearance: none; background: none; border: none; color: #93c5fd; cursor: pointer; font-size: 12px; padding: 0; text-decoration: underline; }
+.link-btn:hover { color: #bfdbfe; }
+
+/* JSON Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal { width: 800px; max-width: 94vw; max-height: 80vh; background: #0f1420; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); overflow: hidden; display: flex; flex-direction: column; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.modal-title { font-weight: 600; }
+.btn-sm { padding: 6px 10px; font-size: 12px; }
+.json-pre { margin: 0; padding: 12px; overflow: auto; white-space: pre; font-size: 12px; line-height: 1.5; background: #0b0f17; color: #e2e8f0; }

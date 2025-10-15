@@ -648,14 +648,47 @@
       return <div ref={containerRef} className="scene-container" />;
     }
 
-    function LogCard({ title, emoji, items }) {
+    function JsonModal({ open, onClose, payload }) {
+      if (!open) return null;
+      const label = payload?.label || 'JSON';
+      const data = payload?.json || {};
+      const pretty = (()=>{ try { return JSON.stringify(data, null, 2); } catch(e) { return 'Invalid JSON'; } })();
+      return (
+        <div className="modal-overlay" onClick={onClose}>
+          <div className="modal" onClick={(e)=>e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">{label}</div>
+              <button className="btn btn-sm" onClick={onClose}>Close</button>
+            </div>
+            <pre className="json-pre">{pretty}</pre>
+          </div>
+        </div>
+      );
+    }
+
+    function LogCard({ title, emoji, items, onOpenJson }) {
       return (
         <div className="card log-card">
           <div className="card-title">{emoji} {title}</div>
           <ul>
-            {items.map((it, idx) => (
-              <li key={idx}>{it}</li>
-            ))}
+            {items.map((it, idx) => {
+              const text = typeof it === 'string' ? it : (it?.text || '');
+              const attachments = typeof it === 'object' && it?.attachments ? it.attachments : [];
+              return (
+                <li key={idx}>
+                  <div className="log-line">
+                    <span className="log-text">{text}</span>
+                    {attachments && attachments.length > 0 && (
+                      <span className="log-links">
+                        {attachments.map((a, j) => (
+                          <button key={j} className="link-btn" onClick={() => onOpenJson(a)}>{a.label || 'JSON'}</button>
+                        ))}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
       );
@@ -663,6 +696,10 @@
 
     function App() {
       const { state, patientLog, ambulanceLog, hospitalLog, requests, emit } = useSocket();
+      const [modalOpen, setModalOpen] = useState(false);
+      const [modalPayload, setModalPayload] = useState(null);
+      const openJson = (payload) => { setModalPayload(payload); setModalOpen(true); };
+      const closeJson = () => { setModalOpen(false); setModalPayload(null); };
       const [showConfig, setShowConfig] = useState(true);
       const [starting, setStarting] = useState(false);
       const [form, setForm] = useState({ ambulances: 5, houses: 10, hospitals: 3, waiting_time: 2, treating_time: 40, gen_min: 5, gen_max: 10 });
@@ -769,10 +806,11 @@
               <IsometricScene state={state} onHouseClick={emit.createPatientAt} />
             </section>
             <aside className="sidebar">
-              <LogCard title="Patient Events" emoji="👤" items={patientLog} />
-              <LogCard title="Ambulance Events" emoji="🚑" items={ambulanceLog} />
-              <LogCard title="Hospital Events" emoji="🏥" items={hospitalLog} />
+              <LogCard title="Patient Events" emoji="👤" items={patientLog} onOpenJson={openJson} />
+              <LogCard title="Ambulance Events" emoji="🚑" items={ambulanceLog} onOpenJson={openJson} />
+              <LogCard title="Hospital Events" emoji="🏥" items={hospitalLog} onOpenJson={openJson} />
             </aside>
+            <JsonModal open={modalOpen} onClose={closeJson} payload={modalPayload} />
             {showConfig && (
               <div className="splash">
                 <div className="splash-card">
