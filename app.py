@@ -123,6 +123,7 @@ class Patient:
         self.wait_time = 0
         self.fhir_resources = fhir_resources or {}
         self.encounters = []  # Add list to store encounters
+        self.latest_encounter_id = None  # Track latest ED presentation encounter id
 
 class Ambulance:
     def __init__(self, id, x, y):
@@ -195,16 +196,33 @@ class Hospital:
         if self.treating:
             patient = self.treating.pop(0)  # Remove from treating queue
             self.discharged.append(patient)  # Add to discharged queue
-            
-            # Add log event for patient moving to discharged list
+
+            # Immediate hospital log for UI feedback (non-FHIR)
             discharge_details = (
                 f"{patient.name} moved to discharged list | "
                 f"Hospital {self.id} | "
                 f"Condition: {patient.condition.code.get('display', 'Unknown')} | "
                 f"Treatment duration: {patient.wait_time} seconds"
             )
-            log_event(discharge_details, event_type='hospital')
-            
+            try:
+                # Minimal JSON payload for discharge signal
+                now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                # Prefer explicitly tracked latest encounter id; fallback to last encounter in list
+                last_enc = None
+                if getattr(patient, 'latest_encounter_id', None):
+                    last_enc = {'id': patient.latest_encounter_id}
+                elif getattr(patient, 'encounters', None):
+                    last_enc = patient.encounters[-1]
+                attachment = {
+                    'eventType': 'discharge',
+                    'timestamp': now_iso,
+                    'hospitalId': self.id,
+                    'patient': { 'reference': f"Patient/{patient.id}", 'display': patient.name },
+                    'encounter': ({ 'reference': f"Encounter/{last_enc.get('id')}" } if isinstance(last_enc, dict) and last_enc.get('id') else None)
+                }
+                log_event(discharge_details, event_type='hospital', attachments=[{ 'label': 'Discharge', 'json': attachment }])
+            except Exception:
+                log_event(discharge_details, event_type='hospital')
             return patient
         return None
 
@@ -257,6 +275,32 @@ def log_event(message, event_type='general', attachments=None):
     else:
         # General log or other types can be handled here
         pass
+
+def build_ambulance_event_attachment(event_kind, ambulance=None, patient=None, hospital_id=None, extra=None):
+    """Create a minimal JSON payload for ambulance-related events."""
+    try:
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        payload = {
+            'eventType': event_kind,
+            'timestamp': now_iso
+        }
+        if ambulance is not None:
+            payload['ambulance'] = {
+                'id': getattr(ambulance, 'id', None),
+                'state': getattr(ambulance, 'state', None)
+            }
+        if patient is not None:
+            try:
+                payload['patient'] = { 'reference': f"Patient/{patient.id}", 'display': patient.name }
+            except Exception:
+                pass
+        if hospital_id is not None:
+            payload['hospitalId'] = hospital_id
+        if isinstance(extra, dict):
+            payload.update(extra)
+        return [{ 'label': 'Event', 'json': payload }]
+    except Exception:
+        return None
 
 patients = []  # Global list to store all Patient objects
 
@@ -441,13 +485,20 @@ def generate_discharge_for_patient(hospital, patient):
                 except Exception as e:
                     logging.error(f"Error saving discharge encounter FHIR resource: {str(e)}")
             
-            # Add discharge event logging
+            # Add discharge event logging with JSON attachment
             discharge_summary = (
-                f"{patient.name} discharged from Hospital {hospital.id} | "
+                f"Discharge encounter created for {patient.name} | Hospital {hospital.id} | "
                 f"Condition: {patient.condition.code.get('display', 'Unknown')} | "
                 f"Total time in hospital: {patient.wait_time} seconds"
             )
-            log_event(discharge_summary, event_type='hospital')
+            try:
+                log_event(
+                    discharge_summary,
+                    event_type='hospital',
+                    attachments=[{'label': 'Discharge', 'json': validate_encounter_data(discharge)}]
+                )
+            except Exception:
+                log_event(discharge_summary, event_type='hospital')
     except Exception as e:
         logging.error(f"Error generating discharge: {str(e)}")
         log_event(f"Error processing discharge for {patient.name}", event_type='hospital')
@@ -579,9 +630,20 @@ def move_ambulances():
                         closest_ambulance.state = 'red'  # Heading to pick up a patient
                         house.ambulance_on_the_way = True
                         closest_ambulance.patient = patient
-                        log_event(f"Ambulance {closest_ambulance.id} is heading to House {house.id} to pick up {patient.name}", event_type='ambulance')
+                        log_event(
+                            f"Ambulance {closest_ambulance.id} is heading to House {house.id} to pick up {patient.name}",
+                            event_type='ambulance',
+                            attachments=build_ambulance_event_attachment(
+                                'ambulance_heading_to_house', ambulance=closest_ambulance, patient=patient, hospital_id=None,
+                                extra={'houseId': house.id}
+                            )
+                        )
                     else:
-                        log_event(f"No patient found at House {house.id}", event_type='ambulance')
+                        log_event(
+                            f"No patient found at House {house.id}",
+                            event_type='ambulance',
+                            attachments=build_ambulance_event_attachment('ambulance_no_patient', ambulance=closest_ambulance, patient=None, hospital_id=None, extra={'houseId': house.id})
+                        )
 
         for ambulance in ambulances:
             if ambulance.target:
@@ -609,14 +671,22 @@ def move_ambulances():
                                 next_ambulance.target = (patient_house.x, patient_house.y)
                                 next_ambulance.state = 'red'
                                 next_ambulance.patient = next((p for p in patients if p.id == patient_house.patient_ids[0]), None)
-                                log_event(f"Ambulance {next_ambulance.id} is heading to House {patient_house.id} to pick up Patient {next_ambulance.patient.id}", event_type='ambulance')
+                                log_event(
+                                    f"Ambulance {next_ambulance.id} is heading to House {patient_house.id} to pick up Patient {next_ambulance.patient.id}",
+                                    event_type='ambulance',
+                                    attachments=build_ambulance_event_attachment('ambulance_heading_to_house', ambulance=next_ambulance, patient=next_ambulance.patient, hospital_id=None, extra={'houseId': patient_house.id})
+                                )
                             else:
                                 patient_house.ambulance_on_the_way = False  # No available ambulances
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
                         ambulance.target = (nearest_hospital.x, nearest_hospital.y)
                         ambulance.state = 'yellow'  # Has patient, heading to hospital
                         ambulance.ramp_since = None
-                        log_event(f"Ambulance {ambulance.id} picked up {ambulance.patient.name} from House {patient_house.id} and is heading to Hospital {nearest_hospital.id}", event_type='ambulance')
+                        log_event(
+                            f"Ambulance {ambulance.id} picked up {ambulance.patient.name} from House {patient_house.id} and is heading to Hospital {nearest_hospital.id}",
+                            event_type='ambulance',
+                            attachments=build_ambulance_event_attachment('pickup_and_depart', ambulance=ambulance, patient=ambulance.patient, hospital_id=nearest_hospital.id, extra={'houseId': patient_house.id})
+                        )
                     elif ambulance.x == ambulance.target[0] and ambulance.y == ambulance.target[1]:
                         # If ambulance reached the hospital
                         nearest_hospital = find_nearest_hospital(ambulance.x, ambulance.y)
@@ -639,7 +709,8 @@ def move_ambulances():
                                     ambulance.ramp_since = time.time()
                                     log_event(
                                         f"Ambulance {ambulance.id} waiting to offload at Hospital {nearest_hospital.id} (waiting full)",
-                                        event_type='ambulance'
+                                        event_type='ambulance',
+                                        attachments=build_ambulance_event_attachment('ramping', ambulance=ambulance, patient=ambulance.patient, hospital_id=nearest_hospital.id)
                                     )
                         else:
                             # No patient attached, reset ambulance to available state
@@ -804,6 +875,11 @@ def process_patient_encounter(hospital, patient):
             if encounter_dict:
                 patient.encounters.append(encounter_dict)
                 try:
+                    if isinstance(encounter_dict, dict) and encounter_dict.get('id'):
+                        patient.latest_encounter_id = encounter_dict.get('id')
+                except Exception:
+                    pass
+                try:
                     log_event(
                         f"ED presentation created for {patient.name} | Hospital {hospital.id}",
                         event_type='hospital',
@@ -830,6 +906,11 @@ def process_patient_encounter(hospital, patient):
             
         if fallback_encounter:
             try:
+                try:
+                    if isinstance(fallback_encounter, dict) and fallback_encounter.get('id'):
+                        patient.latest_encounter_id = fallback_encounter.get('id')
+                except Exception:
+                    pass
                 log_event(
                     f"ED presentation created for {patient.name} | Hospital {hospital.id}",
                     event_type='hospital',
@@ -916,7 +997,11 @@ def manage_hospital_queues():
                 while len(hospital.waiting) < HOSPITAL_WAITING_CAPACITY and ramped:
                     amb = ramped.pop(0)
                     hospital.add_patient_to_waiting(amb.patient)
-                    log_event(f"Ambulance {amb.id} offloaded patient {amb.patient.name} at Hospital {hospital.id}", event_type='ambulance')
+                    log_event(
+                        f"Ambulance {amb.id} offloaded patient {amb.patient.name} at Hospital {hospital.id}",
+                        event_type='ambulance',
+                        attachments=build_ambulance_event_attachment('offload', ambulance=amb, patient=amb.patient, hospital_id=hospital.id)
+                    )
                     amb.is_available = True
                     amb.state = 'green'
                     amb.patient = None
