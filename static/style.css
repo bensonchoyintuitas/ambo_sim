@@ -89,7 +89,7 @@ body {
     box-shadow: 0 10px 30px rgba(0,0,0,0.35);
 }
 
-.log-card ul { list-style: none; margin: 8px 0 0 0; padding: 0; overflow: auto; flex: 1; }
+.log-card ul { list-style: none; margin: 8px 0 0 0; padding: 0 12px 0 0; overflow: auto; flex: 1; }
 .log-card li { font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
 .log-card li:last-child { border-bottom: none; }
 
@@ -112,7 +112,7 @@ body {
 /* Log line with links */
 .log-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .log-text { flex: 1 1 auto; }
-.log-links { flex: 0 0 auto; display: inline-flex; gap: 8px; }
+.log-links { flex: 0 0 auto; display: inline-flex; gap: 8px; margin-right: 4px; }
 .link-btn { appearance: none; background: none; border: none; color: #93c5fd; cursor: pointer; font-size: 12px; padding: 0; text-decoration: underline; }
 .link-btn:hover { color: #bfdbfe; }
 
