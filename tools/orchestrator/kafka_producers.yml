@@ -24,6 +24,62 @@
     - 'python3 produce_json.py --input ../../fhir_export/session_20250630_140313/encounter_ed_presentation/ --output-topic encounter_ed_presentation --continuous 30'
     - 'python3 -c "import time; time.sleep(60)"'
 
+# event producers for session_20251015_213105
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_producer"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up kafka_producer ambulance_heading_to_house\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20251015_213105/event/ambulance_heading_to_house/ --output-topic event_ambulance_heading_to_house --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_producer"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up kafka_producer ambulance_redirect\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20251015_213105/event/ambulance_redirect/ --output-topic event_ambulance_redirect --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_producer"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up kafka_producer arrive_hospital\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20251015_213105/event/arrive_hospital/ --output-topic event_arrive_hospital --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_producer"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up kafka_producer discharge\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20251015_213105/event/discharge/ --output-topic event_discharge --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_producer"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up kafka_producer hospital_location\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20251015_213105/event/hospital_location/ --output-topic event_hospital_location --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_producer"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up kafka_producer off_stretcher\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20251015_213105/event/off_stretcher/ --output-topic event_off_stretcher --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_producer"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up kafka_producer offload\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20251015_213105/event/offload/ --output-topic event_offload --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_producer"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up kafka_producer pickup_and_depart\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20251015_213105/event/pickup_and_depart/ --output-topic event_pickup_and_depart --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_producer"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up kafka_producer ramping\")'"
+    - 'python3 produce_json.py --input ../../fhir_export/session_20251015_213105/event/ramping/ --output-topic event_ramping --continuous 30'
+    - 'python3 -c "import time; time.sleep(60)"'
+
 
 
 

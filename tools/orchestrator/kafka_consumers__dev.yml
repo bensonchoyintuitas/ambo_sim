@@ -24,3 +24,59 @@
     - 'python3 kafka_consumer_adls.py --topic condition --container dev --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
     - 'python3 -c "import time; time.sleep(60)"'
 
+
+# event consumers for session_20251015_213105
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up event_ambulance_heading_to_house consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic event_ambulance_heading_to_house --container dev --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up event_ambulance_redirect consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic event_ambulance_redirect --container dev --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up event_arrive_hospital consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic event_arrive_hospital --container dev --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up event_discharge consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic event_discharge --container dev --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up event_hospital_location consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic event_hospital_location --container dev --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up event_off_stretcher consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic event_off_stretcher --container dev --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up event_offload consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic event_offload --container dev --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up event_pickup_and_depart consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic event_pickup_and_depart --container dev --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_adls"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up event_ramping consumer to adls --auto-offset earliest\")'"
+    - 'python3 kafka_consumer_adls.py --topic event_ramping --container dev --path bronze/landing/kafka__local/ --consumer-group DefaultConsumerGroup --bootstrap-server localhost:9092 --auto-offset earliest --reset-offset'
+    - 'python3 -c "import time; time.sleep(60)"'
