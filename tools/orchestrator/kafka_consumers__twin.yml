@@ -3,13 +3,13 @@
   env: "source .venv/bin/activate"
   cmd:
     - "python3 -c 'print(\"Firing up ambo_twin consumer (live latest)\")'"
-    - 'python3 consumer.py --bootstrap-server localhost:9092 --group ambo-twin-live --auto-offset latest --twin-url http://localhost:5000'
+    - 'python3 consumer.py --bootstrap-server localhost:9092 --group ambo-twin-live --auto-offset latest --twin-url http://localhost:5001'
     - 'python3 -c "import time; time.sleep(60)"'
 - wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_twin"
   env: "source .venv/bin/activate"
   cmd:
     - "python3 -c 'print(\"Firing up ambo_twin consumer (backfill earliest)\")'"
-    - 'python3 consumer.py --bootstrap-server localhost:9092 --group ambo-twin-backfill --auto-offset earliest --twin-url http://localhost:5000'
+    - 'python3 consumer.py --bootstrap-server localhost:9092 --group ambo-twin-backfill --auto-offset earliest --twin-url http://localhost:5001'
     - 'python3 -c "import time; time.sleep(60)"'
 
 

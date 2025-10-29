@@ -66,6 +66,8 @@
       useEffect(() => {
         const container = containerRef.current; if (!container) return;
         const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0b0f17);
+        // match Ambo Sim depth feel
+        scene.fog = new THREE.Fog(0x0b0f17, 60, 120);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         const size = () => ({ w: container.clientWidth || 800, h: container.clientHeight || 650 });
         const { w: initW, h: initH } = size();
@@ -102,8 +104,32 @@
       }, []);
 
       useEffect(() => {
-        const { scene, renderer, camera } = engineRef.current; if (!scene) return;
+        const { scene, renderer, camera, controls } = engineRef.current; if (!scene) return;
         const toWorld = (x, y) => ({ x: (x - 400) * 0.06, z: (y - 325) * 0.06 });
+
+        // Fit camera/zoom to current state similar to Ambo Sim
+        const fitToState = () => {
+          const positions = [];
+          for (const h of state.houses || []) { const p = toWorld(h.x, h.y); positions.push(new THREE.Vector3(p.x, 0, p.z)); }
+          for (const h of state.hospitals || []) { const p = toWorld(h.x, h.y); positions.push(new THREE.Vector3(p.x, 0, p.z)); }
+          if (!positions.length) return;
+          const box = new THREE.Box3(); for (const v of positions) box.expandByPoint(v);
+          const center = new THREE.Vector3(); box.getCenter(center);
+          center.add(new THREE.Vector3(0, 0, 0));
+          const size = new THREE.Vector3(); box.getSize(size);
+          const a = renderer.domElement.clientWidth / renderer.domElement.clientHeight;
+          const viewWidth = 30 * a; const viewHeight = 30;
+          const marginX = 1.25; const marginY = 1.20;
+          const zoomX = viewWidth / (size.x * marginX || 1);
+          const zoomY = viewHeight / (size.z * marginY || 1);
+          camera.zoom = Math.min(zoomX, zoomY) * 0.88;
+          camera.updateProjectionMatrix();
+          const dir = camera.position.clone().sub((controls?.target || new THREE.Vector3())).normalize();
+          if (controls?.target) controls.target.copy(center);
+          camera.position.copy(center.clone().add(dir.multiplyScalar(40)));
+          controls?.update && controls.update();
+        };
+        engineRef.current.fitToState = fitToState;
 
         const ensureHospitalGroup = (hospital, pos) => {
           let group = objectsRef.current.hospitalGroups.get(hospital.id);
@@ -173,6 +199,17 @@
         for (const amb of state.ambulances || []) { let mesh = objectsRef.current.ambulances.get(amb.id); const { x, z } = toWorld(amb.x, amb.y);
           if (!mesh) { const geo = new THREE.BoxGeometry(0.7, 0.4, 0.35); const mat = new THREE.MeshStandardMaterial({ color: 0xffffff }); mesh = new THREE.Mesh(geo, mat); const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.05, 0.36), new THREE.MeshStandardMaterial({ color: 0xef4444 })); stripe.position.set(0, -0.05, 0); mesh.add(stripe); mesh.position.set(x, 0.25, z); mesh.userData.target = new THREE.Vector3(x, 0.25, z); mesh.castShadow = true; mesh.receiveShadow = true; engineRef.current.scene.add(mesh); objectsRef.current.ambulances.set(amb.id, mesh); }
           else { mesh.userData.target.set(x, 0.25, z); }
+        }
+
+        // Initial frame to state and allow double-click to refit
+        if (!framedRef.current && ((state.houses || []).length + (state.hospitals || []).length > 0)) {
+          framedRef.current = true;
+          try { fitToState(); } catch(e) {}
+        }
+        const canvasEl = renderer?.domElement;
+        if (canvasEl && !canvasEl._fitHandlerBound) {
+          canvasEl.addEventListener('dblclick', fitToState);
+          canvasEl._fitHandlerBound = true;
         }
       }, [state]);
 

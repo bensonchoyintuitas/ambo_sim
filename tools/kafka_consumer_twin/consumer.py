@@ -63,7 +63,7 @@ def main():
                                  'event_ambulance_heading_to_house', 'event_ambulance_redirect', 'event_arrive_hospital',
                                  'event_discharge', 'event_hospital_location', 'event_off_stretcher', 'event_offload',
                                  'event_pickup_and_depart', 'event_ramping'])
-    parser.add_argument('--twin-url', default='http://localhost:5000')
+    parser.add_argument('--twin-url', default='http://localhost:5001')
     parser.add_argument('--auto-offset', default='latest', choices=['latest', 'earliest'])
     args = parser.parse_args()
 
