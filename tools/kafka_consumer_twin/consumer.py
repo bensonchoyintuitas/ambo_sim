@@ -3,6 +3,7 @@ import json
 import time
 import sys
 from typing import List
+from datetime import datetime
 from kafka import KafkaConsumer
 import requests
 
@@ -36,13 +37,18 @@ def run(bootstrap: str, group: str, topics: List[str], twin_base_url: str, auto_
                         }
                         # Try to parse JSON to ensure valid body for Twin
                         try:
-                            json.loads(m.value)
+                            parsed = json.loads(m.value)
                         except Exception:
                             # Non-JSON payloads are ignored
                             continue
                         r = requests.post(ingest_url, json=payload, timeout=5)
                         if r.status_code >= 300:
                             print(f"Ingest error {r.status_code}: {r.text}")
+                        else:
+                            # Successfully consumed - print topic and timestamp
+                            ts = datetime.now().strftime('%H:%M:%S')
+                            event_ts = parsed.get('timestamp', 'N/A') if isinstance(parsed, dict) else 'N/A'
+                            print(f"[{ts}] Consumed {tp.topic} | event_ts={event_ts} | offset={m.offset}")
                     except Exception as e:
                         print(f"Error handling message: {e}")
             backoff = 1.0

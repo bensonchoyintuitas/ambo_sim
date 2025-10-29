@@ -43,6 +43,7 @@ class TwinState:
         self.patient_index = {}  # patient_id -> {id, name}
         self.condition_by_patient = {}  # patient_id -> display
         self.last_hospital_by_patient = {}  # patient_id -> last known hospital id
+        self.treat_start_by_patient = {}  # patient_id -> datetime when entered treating
 
     def _log(self, bucket: str, text: str, attachments=None):
         entry = {"text": f"{datetime.now().strftime('%H:%M:%S')} - {text}"}
@@ -92,7 +93,7 @@ class TwinState:
                 name = None
             if pid:
                 self.patient_index[pid] = {"id": pid, "name": name}
-                self._log("patient", f"Patient resource received: {pid} {name or ''}")
+                self._log("patient", f"Patient resource received: {pid} {name or ''}", attachments=[{"label": "Patient", "json": patient_json}])
         except Exception:
             pass
 
@@ -103,7 +104,7 @@ class TwinState:
                 pid = subj.split("/")[-1]
                 display = (cond_json.get("code", {}).get("coding", [{}])[0].get("display") or "Condition")
                 self.condition_by_patient[pid] = display
-                self._log("patient", f"Condition for {pid}: {display}")
+                self._log("patient", f"Condition for {pid}: {display}", attachments=[{"label": "Condition", "json": cond_json}])
         except Exception:
             pass
 
@@ -159,7 +160,11 @@ class TwinState:
                             h = self._house_by_id(house_id)
                             if h:
                                 a["x"], a["y"] = h["x"], h["y"]
-                self._log("ambulance", f"Ambulance {amb_id} heading to House {payload.get('houseId')}", attachments=self._attachment_from_event(et, payload))
+                self._log(
+                    "ambulance",
+                    f"Ambulance {amb_id} is heading to House {payload.get('houseId')} to pick up {patient_name or patient_id}",
+                    attachments=self._attachment_from_event(et, payload)
+                )
 
             elif et == "pickup_and_depart":
                 house_id = payload.get("houseId")
@@ -187,14 +192,19 @@ class TwinState:
                             h = self._hospital_by_id(hosp_id)
                             if h:
                                 a["x"], a["y"] = h["x"], h["y"]
-                self._log("ambulance", f"Ambulance {amb_id} pickup and depart to Hospital {payload.get('hospitalId')}", attachments=self._attachment_from_event(et, payload))
+                self._log(
+                    "ambulance",
+                    f"Ambulance {amb_id} picked up {patient_name or patient_id} from House {payload.get('houseId')} and is heading to Hospital {payload.get('hospitalId')}",
+                    attachments=self._attachment_from_event(et, payload)
+                )
 
             elif et == "arrive_hospital":
                 if amb_id is not None:
                     a = self._ambulance_by_id(amb_id)
                     if a:
                         a["state"] = a.get("state") or "yellow"
-                self._log("ambulance", f"Ambulance {amb_id} arrived hospital", attachments=self._attachment_from_event(et, payload))
+                hosp_txt = f" at Hospital {payload.get('hospitalId')}" if isinstance(payload.get("hospitalId"), int) else ""
+                self._log("ambulance", f"Ambulance {amb_id} arrived{hosp_txt}", attachments=self._attachment_from_event(et, payload))
 
             elif et == "offload":
                 hosp_id = payload.get("hospitalId")
@@ -211,7 +221,7 @@ class TwinState:
                             })
                         self.last_hospital_by_patient[patient_id] = hosp_id
                         # hospital-side log for arrival to waiting
-                        self._log("hospital", f"{patient_name or patient_id} entered waiting @H{hosp_id}", attachments=self._attachment_from_event("location", {**payload, "eventType": "hospital_location", "room": "waiting"}))
+                        self._log("hospital", f"{patient_name or patient_id} has arrived at Hospital {hosp_id} and entered waiting queue", attachments=self._attachment_from_event("location", {**payload, "eventType": "hospital_location", "room": "waiting"}))
                 if amb_id is not None:
                     a = self._ambulance_by_id(amb_id)
                     if a:
@@ -239,7 +249,7 @@ class TwinState:
                                 "wait_time": 0
                             })
                         self.last_hospital_by_patient[patient_id] = hosp_id
-                        self._log("hospital", f"{patient_name or patient_id} off stretcher → waiting @H{hosp_id}", attachments=self._attachment_from_event("location", {**payload, "eventType": "hospital_location", "room": "waiting"}))
+                        self._log("hospital", f"{patient_name or patient_id} has arrived at Hospital {hosp_id} and entered waiting queue", attachments=self._attachment_from_event("location", {**payload, "eventType": "hospital_location", "room": "waiting"}))
                 self._log("ambulance", f"Off stretcher at Hospital {payload.get('hospitalId')} for {patient_id}", attachments=self._attachment_from_event(et, payload))
 
             elif et == "ramping":
@@ -272,13 +282,19 @@ class TwinState:
                         self.last_hospital_by_patient[patient_id] = hosp_id
                         # hospital log for room movement
                         if room == "waiting":
-                            self._log("hospital", f"{patient_name or patient_id} entered waiting @H{hosp_id}", attachments=self._attachment_from_event("location", payload))
+                            self._log("hospital", f"{patient_name or patient_id} has arrived at Hospital {hosp_id} and entered waiting queue", attachments=self._attachment_from_event("location", payload))
                         elif room == "treating":
-                            self._log("hospital", f"{patient_name or patient_id} moved to treating @H{hosp_id}", attachments=self._attachment_from_event("location", payload))
+                            self.treat_start_by_patient[patient_id] = datetime.now(timezone.utc)
+                            cond_txt = cond_display or "Unknown"
+                            self._log("hospital", f"{patient_name or patient_id} moved to treating list | Hospital {hosp_id} | Condition: {cond_txt}", attachments=self._attachment_from_event("location", payload))
                         elif room == "discharged":
-                            self._log("hospital", f"{patient_name or patient_id} discharged @H{hosp_id}", attachments=self._attachment_from_event("location", payload))
-                        if room == "discharged":
-                            self._log("hospital", f"Discharged {patient_name or patient_id} @H{hosp_id}")
+                            start = self.treat_start_by_patient.pop(patient_id, None)
+                            try:
+                                dur_sec = int((datetime.now(timezone.utc) - start).total_seconds()) if start else 40
+                            except Exception:
+                                dur_sec = 40
+                            cond_txt = cond_display or "Unknown"
+                            self._log("hospital", f"{patient_name or patient_id} moved to discharged list | Hospital {hosp_id} | Condition: {cond_txt} | Treatment duration: {dur_sec} seconds", attachments=self._attachment_from_event("location", payload))
                 
             elif et == "discharge":
                 # If explicit discharge event arrives, move to discharged in last known hospital if present
@@ -296,7 +312,23 @@ class TwinState:
                                 "wait_time": 0
                             })
                         self.last_hospital_by_patient[patient_id] = hosp_id
-                        self._log("hospital", f"Discharge event for {patient_name or patient_id}", attachments=self._attachment_from_event("discharge", payload))
+                        start = self.treat_start_by_patient.pop(patient_id, None)
+                        try:
+                            dur_sec = int((datetime.now(timezone.utc) - start).total_seconds()) if start else 40
+                        except Exception:
+                            dur_sec = 40
+                        cond_txt = cond_display or "Unknown"
+                        self._log("hospital", f"{patient_name or patient_id} moved to discharged list | Hospital {hosp_id} | Condition: {cond_txt} | Treatment duration: {dur_sec} seconds", attachments=self._attachment_from_event("discharge", payload))
+
+            elif et in ("redirect", "ambulance_redirect"):
+                from_h = payload.get("fromHospitalId")
+                to_h = payload.get("toHospitalId")
+                if amb_id is not None:
+                    a = self._ambulance_by_id(amb_id)
+                    if a:
+                        a["state"] = "yellow"
+                        a["queue_hospital_id"] = None
+                self._log("ambulance", f"Redirecting ambulance {amb_id} from hospital {from_h} to hospital {to_h} due to ramping", attachments=self._attachment_from_event("redirect", payload))
 
     def handle_encounter(self, topic: str, encounter_json: dict):
         kind = "ed_presentation" if "encounter_ed_presentation" in (topic or "") else ("discharge" if "encounter_discharge" in (topic or "") else "encounter")

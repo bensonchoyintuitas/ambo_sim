@@ -1,3 +1,9 @@
+# Ambo Twin app
+- wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/"
+  env: "source .venv/bin/activate"
+  cmd:
+    - "python3 -c 'print(\"Firing up ambo_twin\")'"
+    - 'python3 -m ambo_twin.app'
 # Ambo Twin consumers - live only (no backfill)
 - wd: "/mnt/d/Work/Intuitas/repo/ambo_sim/tools/kafka_consumer_twin"
   env: "source .venv/bin/activate"
