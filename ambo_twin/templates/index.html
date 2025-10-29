@@ -62,6 +62,9 @@
       const BASE_FRUSTUM = 30;
       const TARGET_PAN_OFFSET = new THREE.Vector3(0, 0, 0);
       const toWorld = (x, y) => ({ x: (x - 400) * WORLD_SCALE, z: (y - 325) * WORLD_SCALE });
+      // Animation speed caps (world units per second)
+      const AMBULANCE_SPEED = 9.0;
+      const PATIENT_SPEED = 0.80;
 
       useEffect(() => {
         const container = containerRef.current; if (!container) return;
@@ -96,7 +99,33 @@
         ro.observe(container);
 
         let rafId = null; const animate = () => { rafId = requestAnimationFrame(animate);
-          for (const [id, obj] of objectsRef.current.ambulances) { if (!obj.userData.target) continue; obj.position.lerp(obj.userData.target, 0.15); if (engineRef.current.controls?.update) engineRef.current.controls.update(); }
+          const dt = engineRef.current.clock ? engineRef.current.clock.getDelta() : 0.016;
+          // Move ambulances with capped speed
+          for (const [id, obj] of objectsRef.current.ambulances) {
+            if (!obj.userData.target) continue;
+            const target = obj.userData.target;
+            const dir = new THREE.Vector3().subVectors(target, obj.position);
+            const dist = dir.length();
+            if (dist > 0.0001) {
+              const step = Math.min(dist, AMBULANCE_SPEED * dt);
+              dir.normalize().multiplyScalar(step);
+              obj.position.add(dir);
+            }
+            if (engineRef.current.controls?.update) engineRef.current.controls.update();
+          }
+          // Move patient tokens with capped speed
+          for (const [pid, mesh] of objectsRef.current.patientMeshes) {
+            if (mesh.userData && mesh.userData.target) {
+              const target = mesh.userData.target;
+              const dir = new THREE.Vector3().subVectors(target, mesh.position);
+              const dist = dir.length();
+              if (dist > 0.0001) {
+                const step = Math.min(dist, PATIENT_SPEED * dt);
+                dir.normalize().multiplyScalar(step);
+                mesh.position.add(dir);
+              }
+            }
+          }
           renderer.render(scene, camera);
         }; animate();
 
@@ -216,12 +245,47 @@
       return <div ref={containerRef} className="scene-container" />;
     }
 
-    function LogCard({ title, emoji, items }) {
+    function JsonModal({ open, onClose, payload }) {
+      if (!open) return null;
+      const label = payload?.label || 'JSON';
+      const data = payload?.json || {};
+      const pretty = (()=>{ try { return JSON.stringify(data, null, 2); } catch(e) { return 'Invalid JSON'; } })();
+      return (
+        <div className="modal-overlay" onClick={onClose}>
+          <div className="modal" onClick={(e)=>e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">{label}</div>
+              <button className="btn btn-sm" onClick={onClose}>Close</button>
+            </div>
+            <pre className="json-pre">{pretty}</pre>
+          </div>
+        </div>
+      );
+    }
+
+    function LogCard({ title, emoji, items, onOpenJson }) {
       return (
         <div className="card log-card">
           <div className="card-title">{emoji} {title}</div>
           <ul>
-            {items.map((it, idx) => <li key={idx}><div className="log-line"><span className="log-text">{typeof it === 'string' ? it : (it?.text || '')}</span></div></li>)}
+            {items.map((it, idx) => {
+              const text = typeof it === 'string' ? it : (it?.text || '');
+              const attachments = typeof it === 'object' && it?.attachments ? it.attachments : [];
+              return (
+                <li key={idx}>
+                  <div className="log-line">
+                    <span className="log-text">{text}</span>
+                    {attachments && attachments.length > 0 && (
+                      <span className="log-links">
+                        {attachments.map((a, j) => (
+                          <button key={j} className="link-btn" onClick={() => onOpenJson(a)}>{a.label || 'JSON'}</button>
+                        ))}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
       );
@@ -229,6 +293,10 @@
 
     function App() {
       const { state, patientLog, ambulanceLog, hospitalLog } = useSocket();
+      const [modalOpen, setModalOpen] = useState(false);
+      const [modalPayload, setModalPayload] = useState(null);
+      const openJson = (payload) => { setModalPayload(payload); setModalOpen(true); };
+      const closeJson = () => { setModalOpen(false); setModalPayload(null); };
       return (
         <div className="app">
           <header className="topbar">
@@ -239,10 +307,11 @@
           <main className="layout">
             <section className="stage"><IsometricScene state={state} /></section>
             <aside className="sidebar">
-              <LogCard title="Patient Events" emoji="👤" items={patientLog} />
-              <LogCard title="Ambulance Events" emoji="🚑" items={ambulanceLog} />
-              <LogCard title="Hospital Events" emoji="🏥" items={hospitalLog} />
+              <LogCard title="Patient Events" emoji="👤" items={patientLog} onOpenJson={openJson} />
+              <LogCard title="Ambulance Events" emoji="🚑" items={ambulanceLog} onOpenJson={openJson} />
+              <LogCard title="Hospital Events" emoji="🏥" items={hospitalLog} onOpenJson={openJson} />
             </aside>
+            <JsonModal open={modalOpen} onClose={closeJson} payload={modalPayload} />
           </main>
         </div>
       );

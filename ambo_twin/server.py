@@ -42,21 +42,38 @@ class TwinState:
         # minimal lookup caches
         self.patient_index = {}  # patient_id -> {id, name}
         self.condition_by_patient = {}  # patient_id -> display
+        self.last_hospital_by_patient = {}  # patient_id -> last known hospital id
 
-    def _log(self, bucket: str, text: str):
+    def _log(self, bucket: str, text: str, attachments=None):
         entry = {"text": f"{datetime.now().strftime('%H:%M:%S')} - {text}"}
+        if isinstance(attachments, list) and attachments:
+            entry["attachments"] = attachments
+        # simple de-dupe of consecutive identical lines within same bucket
         if bucket == "patient":
+            if self.patient_log and self.patient_log[0].get("text") == entry["text"]:
+                return
             self.patient_log.insert(0, entry)
             if len(self.patient_log) > self.log_capacity:
                 self.patient_log.pop()
         elif bucket == "ambulance":
+            if self.ambulance_log and self.ambulance_log[0].get("text") == entry["text"]:
+                return
             self.ambulance_log.insert(0, entry)
             if len(self.ambulance_log) > self.log_capacity:
                 self.ambulance_log.pop()
         elif bucket == "hospital":
+            if self.hospital_log and self.hospital_log[0].get("text") == entry["text"]:
+                return
             self.hospital_log.insert(0, entry)
             if len(self.hospital_log) > self.log_capacity:
                 self.hospital_log.pop()
+
+    def _attachment_from_event(self, label_kind: str, payload: dict):
+        try:
+            label = (str(label_kind or "Event").replace("_", " ").strip().title())
+        except Exception:
+            label = "Event"
+        return [{"label": label, "json": payload}]
 
     def get_state(self):
         return {
@@ -142,7 +159,7 @@ class TwinState:
                             h = self._house_by_id(house_id)
                             if h:
                                 a["x"], a["y"] = h["x"], h["y"]
-                self._log("ambulance", f"Ambulance {amb_id} heading to House {payload.get('houseId')}")
+                self._log("ambulance", f"Ambulance {amb_id} heading to House {payload.get('houseId')}", attachments=self._attachment_from_event(et, payload))
 
             elif et == "pickup_and_depart":
                 house_id = payload.get("houseId")
@@ -170,14 +187,14 @@ class TwinState:
                             h = self._hospital_by_id(hosp_id)
                             if h:
                                 a["x"], a["y"] = h["x"], h["y"]
-                self._log("ambulance", f"Ambulance {amb_id} pickup and depart to Hospital {payload.get('hospitalId')}")
+                self._log("ambulance", f"Ambulance {amb_id} pickup and depart to Hospital {payload.get('hospitalId')}", attachments=self._attachment_from_event(et, payload))
 
             elif et == "arrive_hospital":
                 if amb_id is not None:
                     a = self._ambulance_by_id(amb_id)
                     if a:
                         a["state"] = a.get("state") or "yellow"
-                self._log("ambulance", f"Ambulance {amb_id} arrived hospital")
+                self._log("ambulance", f"Ambulance {amb_id} arrived hospital", attachments=self._attachment_from_event(et, payload))
 
             elif et == "offload":
                 hosp_id = payload.get("hospitalId")
@@ -192,6 +209,9 @@ class TwinState:
                                 "condition": {"code": {"display": cond_display or "Unknown"}},
                                 "wait_time": 0
                             })
+                        self.last_hospital_by_patient[patient_id] = hosp_id
+                        # hospital-side log for arrival to waiting
+                        self._log("hospital", f"{patient_name or patient_id} entered waiting @H{hosp_id}", attachments=self._attachment_from_event("location", {**payload, "eventType": "hospital_location", "room": "waiting"}))
                 if amb_id is not None:
                     a = self._ambulance_by_id(amb_id)
                     if a:
@@ -203,7 +223,7 @@ class TwinState:
                             "queue_hospital_id": None,
                             "ramp_wait_seconds": 0
                         })
-                self._log("ambulance", f"Ambulance {amb_id} offload at Hospital {payload.get('hospitalId')}")
+                self._log("ambulance", f"Ambulance {amb_id} offload at Hospital {payload.get('hospitalId')}", attachments=self._attachment_from_event(et, payload))
 
             elif et == "off_stretcher":
                 # same visual effect as offload into waiting area
@@ -218,7 +238,9 @@ class TwinState:
                                 "condition": {"code": {"display": cond_display or "Unknown"}},
                                 "wait_time": 0
                             })
-                self._log("ambulance", f"Off stretcher at Hospital {payload.get('hospitalId')} for {patient_id}")
+                        self.last_hospital_by_patient[patient_id] = hosp_id
+                        self._log("hospital", f"{patient_name or patient_id} off stretcher → waiting @H{hosp_id}", attachments=self._attachment_from_event("location", {**payload, "eventType": "hospital_location", "room": "waiting"}))
+                self._log("ambulance", f"Off stretcher at Hospital {payload.get('hospitalId')} for {patient_id}", attachments=self._attachment_from_event(et, payload))
 
             elif et == "ramping":
                 hosp_id = payload.get("hospitalId")
@@ -228,9 +250,9 @@ class TwinState:
                         a["state"] = "orange"
                         a["queue_hospital_id"] = hosp_id
                         a["ramp_wait_seconds"] = 0
-                self._log("ambulance", f"Ambulance {amb_id} ramping at Hospital {payload.get('hospitalId')}")
+                self._log("ambulance", f"Ambulance {amb_id} ramping at Hospital {payload.get('hospitalId')}", attachments=self._attachment_from_event(et, payload))
 
-            elif et == "hospital_location":
+            elif et in ("hospital_location", "location"):
                 hosp_id = payload.get("hospitalId")
                 room = payload.get("room")
                 if isinstance(hosp_id, int) and patient_id and room in ("waiting", "treating", "discharged"):
@@ -247,6 +269,14 @@ class TwinState:
                             "wait_time": 0
                         }
                         h[room].append(meta)
+                        self.last_hospital_by_patient[patient_id] = hosp_id
+                        # hospital log for room movement
+                        if room == "waiting":
+                            self._log("hospital", f"{patient_name or patient_id} entered waiting @H{hosp_id}", attachments=self._attachment_from_event("location", payload))
+                        elif room == "treating":
+                            self._log("hospital", f"{patient_name or patient_id} moved to treating @H{hosp_id}", attachments=self._attachment_from_event("location", payload))
+                        elif room == "discharged":
+                            self._log("hospital", f"{patient_name or patient_id} discharged @H{hosp_id}", attachments=self._attachment_from_event("location", payload))
                         if room == "discharged":
                             self._log("hospital", f"Discharged {patient_name or patient_id} @H{hosp_id}")
                 
@@ -265,7 +295,20 @@ class TwinState:
                                 "condition": {"code": {"display": cond_display or "Unknown"}},
                                 "wait_time": 0
                             })
-                        self._log("hospital", f"Discharge event for {patient_name or patient_id}")
+                        self.last_hospital_by_patient[patient_id] = hosp_id
+                        self._log("hospital", f"Discharge event for {patient_name or patient_id}", attachments=self._attachment_from_event("discharge", payload))
+
+    def handle_encounter(self, topic: str, encounter_json: dict):
+        kind = "ed_presentation" if "encounter_ed_presentation" in (topic or "") else ("discharge" if "encounter_discharge" in (topic or "") else "encounter")
+        subj = (encounter_json.get("subject") or {}).get("reference")
+        pid = subj.split("/")[-1] if isinstance(subj, str) and "/" in subj else None
+        name = self.patient_index.get(pid, {}).get("name") if pid else None
+        hosp_id = self.last_hospital_by_patient.get(pid)
+        if kind == "ed_presentation":
+            tail = f" | Hospital {hosp_id}" if isinstance(hosp_id, int) else ""
+            self._log("hospital", f"ED presentation created for {name or pid}{tail}", attachments=[{"label": "ED Presentation", "json": encounter_json}])
+        elif kind == "discharge":
+            self._log("hospital", f"Encounter discharge for {name or pid}", attachments=[{"label": "Discharge", "json": encounter_json}])
 
 
 class TwinStorage:
@@ -397,6 +440,24 @@ class TwinStorage:
         conn.commit()
         conn.close()
 
+    def upsert_encounter(self, encounter_json: dict, kind_hint: str = "encounter"):
+        enc_id = encounter_json.get("id") or f"enc-{utc_now_iso()}"
+        subj = (encounter_json.get("subject") or {}).get("reference", "/")
+        pid = subj.split("/")[-1]
+        kind = "ed_presentation" if "encounter_ed_presentation" in (kind_hint or "") else ("discharge" if "encounter_discharge" in (kind_hint or "") else "encounter")
+        conn = self._connect()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO encounters(encounter_id, patient_id, kind, json)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(encounter_id) DO UPDATE SET json=excluded.json, kind=excluded.kind
+            """,
+            (enc_id, pid, kind, json.dumps(encounter_json)),
+        )
+        conn.commit()
+        conn.close()
+
 
 def create_app():
     app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), "templates"), static_folder=os.path.join(os.path.dirname(__file__), "static"))
@@ -447,6 +508,9 @@ def create_app():
             elif value.get("resourceType") == "Condition":
                 storage.upsert_condition(value)
                 state.upsert_condition(value)
+            elif value.get("resourceType") == "Encounter":
+                storage.upsert_encounter(value, topic or "encounter")
+                state.handle_encounter(topic or "encounter", value)
             else:
                 # Event
                 state.handle_event(topic or value.get("eventType", "event"), value)

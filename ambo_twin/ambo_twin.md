@@ -42,8 +42,12 @@ From `tools/kafka_consumer_twin`:
 
 Linux/macOS
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+
+cd tools/orchestrator
+python3 orchestrator.py kafka_consumers__twin.yml
+
+
+
 python consumer.py --bootstrap-server localhost:9092 --twin-url http://localhost:5001 --auto-offset latest
 ```
 
