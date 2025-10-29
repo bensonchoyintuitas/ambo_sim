@@ -578,7 +578,8 @@ def create_app():
             elif value.get("resourceType") == "Condition":
                 storage.upsert_condition(value)
                 state.upsert_condition(value)
-            elif value.get("resourceType") == "Encounter":
+            elif value.get("resourceType") == "Encounter" or "encounter" in (topic or "").lower():
+                # Handle encounters by resourceType OR topic name (some encounters lack resourceType)
                 print(f"[DEBUG INGEST] Encounter received: topic={topic}, id={value.get('id')}")
                 storage.upsert_encounter(value, topic or "encounter")
                 state.handle_encounter(topic or "encounter", value)

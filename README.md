@@ -129,6 +129,13 @@ The LLM models trade off between speed and quality of generated content. The lla
       - See [confluent/README.md](tools/confluent/README.md) for setup instructions
 
 
+## Option 3: Run the ambo twin
+```bash
+cd ./tools/orchestrator
+source .venv/bin/activate 
+# make sure docker is running
+python3 orchestrator.py ambo_twin.yml
+```
 
 
 ## Documentation 
