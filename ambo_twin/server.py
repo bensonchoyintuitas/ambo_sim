@@ -331,16 +331,54 @@ class TwinState:
                 self._log("ambulance", f"Redirecting ambulance {amb_id} from hospital {from_h} to hospital {to_h} due to ramping", attachments=self._attachment_from_event("redirect", payload))
 
     def handle_encounter(self, topic: str, encounter_json: dict):
-        kind = "ed_presentation" if "encounter_ed_presentation" in (topic or "") else ("discharge" if "encounter_discharge" in (topic or "") else "encounter")
-        subj = (encounter_json.get("subject") or {}).get("reference")
-        pid = subj.split("/")[-1] if isinstance(subj, str) and "/" in subj else None
-        name = self.patient_index.get(pid, {}).get("name") if pid else None
-        hosp_id = self.last_hospital_by_patient.get(pid)
-        if kind == "ed_presentation":
-            tail = f" | Hospital {hosp_id}" if isinstance(hosp_id, int) else ""
-            self._log("hospital", f"ED presentation created for {name or pid}{tail}", attachments=[{"label": "ED Presentation", "json": encounter_json}])
-        elif kind == "discharge":
-            self._log("hospital", f"Encounter discharge for {name or pid}", attachments=[{"label": "Discharge", "json": encounter_json}])
+        try:
+            kind = "ed_presentation" if "encounter_ed_presentation" in (topic or "") else ("discharge" if "encounter_discharge" in (topic or "") else "encounter")
+            subj = (encounter_json.get("subject") or {}).get("reference")
+            pid = subj.split("/")[-1] if isinstance(subj, str) and "/" in subj else None
+            name = self.patient_index.get(pid, {}).get("name") if pid else None
+            cond_display = self.condition_by_patient.get(pid)
+            hosp_id = self.last_hospital_by_patient.get(pid)
+            
+            print(f"[DEBUG] handle_encounter: kind={kind}, topic={topic}, pid={pid}, name={name}, hosp_id={hosp_id}")
+            
+            if kind == "ed_presentation":
+                # Try to extract hospital from encounter location if not tracked
+                if hosp_id is None:
+                    try:
+                        loc_ref = encounter_json.get("location", [{}])[0].get("location", {}).get("reference", "")
+                        if "hospital" in loc_ref.lower():
+                            # Try to extract hospital ID from location reference
+                            import re
+                            match = re.search(r'hospital[_-]?(\d+)', loc_ref, re.IGNORECASE)
+                            if match:
+                                hosp_id = int(match.group(1))
+                    except Exception:
+                        pass
+                
+                tail = f" | Hospital {hosp_id}" if isinstance(hosp_id, int) else ""
+                self._log("hospital", f"ED presentation created for {name or pid}{tail}", attachments=[{"label": "ED Presentation", "json": encounter_json}])
+                print(f"[DEBUG] Logged ED presentation for {name or pid}")
+                
+            elif kind == "discharge":
+                # Get discharge details from encounter if available
+                period = encounter_json.get("period", {})
+                start_str = period.get("start")
+                end_str = period.get("end")
+                dur_sec = 40
+                if start_str and end_str:
+                    try:
+                        from datetime import datetime
+                        start = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                        end = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+                        dur_sec = int((end - start).total_seconds())
+                    except Exception:
+                        pass
+                tail = f" | Hospital {hosp_id}" if isinstance(hosp_id, int) else ""
+                cond_txt = cond_display or "Unknown"
+                self._log("hospital", f"Encounter discharge for {name or pid}{tail} | Condition: {cond_txt} | Treatment duration: {dur_sec} seconds", attachments=[{"label": "Discharge", "json": encounter_json}])
+                print(f"[DEBUG] Logged encounter discharge for {name or pid}")
+        except Exception as e:
+            print(f"[ERROR] handle_encounter: {e}")
 
 
 class TwinStorage:
@@ -541,8 +579,10 @@ def create_app():
                 storage.upsert_condition(value)
                 state.upsert_condition(value)
             elif value.get("resourceType") == "Encounter":
+                print(f"[DEBUG INGEST] Encounter received: topic={topic}, id={value.get('id')}")
                 storage.upsert_encounter(value, topic or "encounter")
                 state.handle_encounter(topic or "encounter", value)
+                print(f"[DEBUG INGEST] Encounter handled, emitting logs")
             else:
                 # Event
                 state.handle_event(topic or value.get("eventType", "event"), value)

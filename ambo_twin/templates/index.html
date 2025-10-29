@@ -90,7 +90,48 @@
         const ambient = new THREE.AmbientLight(0xffffff, 0.7); const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(10, 20, 10); scene.add(ambient, dir);
         const grid = new THREE.GridHelper(80, 80, 0x334155, 0x1f2937); grid.position.y = -0.01; scene.add(grid);
 
-        engineRef.current = { scene, camera, renderer, raycaster: new THREE.Raycaster(), controls, clock: new THREE.Clock() };
+        // Tooltip element
+        const tooltip = document.createElement('div');
+        tooltip.className = 'hover-card';
+        tooltip.style.display = 'none';
+        document.body.appendChild(tooltip);
+        engineRef.current.tooltip = tooltip;
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        const onMove = (e) => {
+          const rect = renderer.domElement.getBoundingClientRect();
+          mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          raycaster.setFromCamera(mouse, camera);
+          const patientObjs = Array.from(objectsRef.current.patientMeshes.values());
+          const hits = raycaster.intersectObjects(patientObjs, true);
+          if (hits.length) {
+            // climb to group carrying userData.patient if needed
+            let obj = hits[0].object;
+            while (obj && !obj.userData?.patient && obj.parent) obj = obj.parent;
+            const pdata = obj?.userData?.patient;
+            if (pdata) {
+              const { name, condition, wait_time, status, hospitalId } = pdata;
+              const cond = condition?.code?.display || 'Condition';
+              tooltip.innerHTML = `
+                <div class="hover-title">👤 ${name}</div>
+                <div class="hover-line">${status} @ H${hospitalId} · ${wait_time || 0}s</div>
+                <div class="hover-line">${cond}</div>`;
+              tooltip.style.left = `${e.clientX + 12}px`;
+              tooltip.style.top = `${e.clientY + 12}px`;
+              tooltip.style.display = 'block';
+            } else {
+              tooltip.style.display = 'none';
+            }
+          } else {
+            tooltip.style.display = 'none';
+          }
+        };
+        renderer.domElement.addEventListener('pointermove', onMove);
+
+        engineRef.current = { scene, camera, renderer, raycaster, controls, clock: new THREE.Clock() };
 
         const ro = new ResizeObserver(() => {
           const { w, h } = size(); if (!(w>0 && h>0)) return;
@@ -129,7 +170,16 @@
           renderer.render(scene, camera);
         }; animate();
 
-        return () => { cancelAnimationFrame(rafId); ro.disconnect(); renderer.dispose(); container.removeChild(renderer.domElement); };
+        return () => {
+          cancelAnimationFrame(rafId);
+          renderer.domElement.removeEventListener('pointermove', onMove);
+          ro.disconnect();
+          renderer.dispose();
+          container.removeChild(renderer.domElement);
+          if (engineRef.current.tooltip && engineRef.current.tooltip.parentElement) {
+            engineRef.current.tooltip.parentElement.removeChild(engineRef.current.tooltip);
+          }
+        };
       }, []);
 
       useEffect(() => {
