@@ -2,7 +2,8 @@ import os
 import json
 import sqlite3
 from datetime import datetime, timezone
-from threading import Lock
+from threading import Lock, Thread
+import time
 from flask import Flask, request, jsonify, render_template
 from flask_socketio import SocketIO, emit
 
@@ -44,6 +45,7 @@ class TwinState:
         self.condition_by_patient = {}  # patient_id -> display
         self.last_hospital_by_patient = {}  # patient_id -> last known hospital id
         self.treat_start_by_patient = {}  # patient_id -> datetime when entered treating
+        self.discharge_encounter_by_patient = {}  # patient_id -> encounter discharge JSON
 
     def _log(self, bucket: str, text: str, attachments=None):
         entry = {"text": f"{datetime.now().strftime('%H:%M:%S')} - {text}"}
@@ -294,7 +296,23 @@ class TwinState:
                             except Exception:
                                 dur_sec = 40
                             cond_txt = cond_display or "Unknown"
-                            self._log("hospital", f"{patient_name or patient_id} moved to discharged list | Hospital {hosp_id} | Condition: {cond_txt} | Treatment duration: {dur_sec} seconds", attachments=self._attachment_from_event("location", payload))
+                            # Build attachments: Location + Discharge encounter if available
+                            attachments = self._attachment_from_event("location", payload)
+                            discharge_enc = self.discharge_encounter_by_patient.get(patient_id)
+                            if discharge_enc:
+                                attachments.append({"label": "Discharge", "json": discharge_enc})
+                                print(f"[DEBUG] Attached discharge encounter to location event for {patient_name or patient_id}")
+                            else:
+                                # Fallback: synthesize a minimal discharge payload so the link always appears
+                                synth = {
+                                    "eventType": "discharge",
+                                    "timestamp": utc_now_iso(),
+                                    "hospitalId": hosp_id,
+                                    "patient": {"reference": f"Patient/{patient_id}", "display": patient_name or patient_id}
+                                }
+                                attachments.append({"label": "Discharge", "json": synth})
+                                print(f"[DEBUG] Synthesized discharge attachment for {patient_name or patient_id}")
+                            self._log("hospital", f"{patient_name or patient_id} moved to discharged list | Hospital {hosp_id} | Condition: {cond_txt} | Treatment duration: {dur_sec} seconds", attachments=attachments)
                 
             elif et == "discharge":
                 # If explicit discharge event arrives, move to discharged in last known hospital if present
@@ -360,25 +378,56 @@ class TwinState:
                 print(f"[DEBUG] Logged ED presentation for {name or pid}")
                 
             elif kind == "discharge":
-                # Get discharge details from encounter if available
-                period = encounter_json.get("period", {})
-                start_str = period.get("start")
-                end_str = period.get("end")
-                dur_sec = 40
-                if start_str and end_str:
+                # Store discharge encounter for future use
+                self.discharge_encounter_by_patient[pid] = encounter_json
+                print(f"[DEBUG] Stored discharge encounter for {name or pid} (pid={pid})")
+                
+                # Also retroactively update the most recent discharge log if it exists
+                # Look for the most recent hospital log entry for this patient's discharge
+                updated = False
+                for i, entry in enumerate(self.hospital_log):
+                    entry_text = entry.get("text", "") if isinstance(entry, dict) else ""
+                    if "moved to discharged list" in entry_text:
+                        # Check if this entry is for our patient (by name or ID)
+                        if (name and name in entry_text) or (pid and pid in entry_text):
+                            # Add discharge attachment if not already present
+                            if "attachments" not in entry:
+                                entry["attachments"] = []
+                            attachments = entry["attachments"]
+                            if not any(a.get("label") == "Discharge" for a in attachments):
+                                attachments.append({"label": "Discharge", "json": encounter_json})
+                                updated = True
+                                print(f"[DEBUG] Retroactively added Discharge link to log entry #{i} for {name or pid}")
+                            else:
+                                print(f"[DEBUG] Discharge link already exists for {name or pid}")
+                            break
+                
+                if not updated:
+                    print(f"[DEBUG] No existing discharge log found for {name or pid}, will attach on next location event")
+
+                # Always log a bespoke Discharge event with JSON link (to mirror Ambo Sim)
+                # Try to infer hospital if not known
+                if hosp_id is None:
                     try:
-                        from datetime import datetime
-                        start = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
-                        end = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
-                        dur_sec = int((end - start).total_seconds())
+                        loc_ref = encounter_json.get("location", [{}])[0].get("location", {}).get("reference", "")
+                        if "hospital" in loc_ref.lower():
+                            import re
+                            m = re.search(r'hospital[_-]?(\d+)', loc_ref, re.IGNORECASE)
+                            if m:
+                                hosp_id = int(m.group(1))
                     except Exception:
                         pass
                 tail = f" | Hospital {hosp_id}" if isinstance(hosp_id, int) else ""
-                cond_txt = cond_display or "Unknown"
-                self._log("hospital", f"Encounter discharge for {name or pid}{tail} | Condition: {cond_txt} | Treatment duration: {dur_sec} seconds", attachments=[{"label": "Discharge", "json": encounter_json}])
-                print(f"[DEBUG] Logged encounter discharge for {name or pid}")
+                self._log("hospital", f"Discharge event for {name or pid}{tail}", attachments=[{"label": "Discharge", "json": encounter_json}])
+
+                # Return True to signal that logs should be re-emitted
+                return updated
         except Exception as e:
             print(f"[ERROR] handle_encounter: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return False
 
 
 class TwinStorage:
@@ -542,6 +591,33 @@ def create_app():
     state = TwinState(app.config["HOUSES"], app.config["HOSPITALS"], app.config["AMBULANCES"])
     storage = TwinStorage(app.config["TWIN_DB"])
 
+    # Background thread to increment wait times
+    def increment_wait_times():
+        while True:
+            try:
+                time.sleep(1)
+                with state._lock:
+                    # Increment wait times for patients in waiting and treating
+                    for hospital in state.hospitals:
+                        for patient in hospital.get("waiting", []):
+                            patient["wait_time"] = patient.get("wait_time", 0) + 1
+                        for patient in hospital.get("treating", []):
+                            patient["wait_time"] = patient.get("wait_time", 0) + 1
+                    
+                    # Increment ramp wait times for ambulances
+                    for ambulance in state.ambulances:
+                        if ambulance.get("state") == "orange" and ambulance.get("patient_id"):
+                            ambulance["ramp_wait_seconds"] = ambulance.get("ramp_wait_seconds", 0) + 1
+                    
+                    # Emit updated state periodically (every 1 second)
+                    socketio.emit("update_state", state.get_state())
+            except Exception as e:
+                print(f"[ERROR] increment_wait_times: {e}")
+    
+    # Start background thread
+    wait_time_thread = Thread(target=increment_wait_times, daemon=True)
+    wait_time_thread.start()
+
     @app.route("/")
     def index():
         return render_template("index.html")
@@ -582,8 +658,8 @@ def create_app():
                 # Handle encounters by resourceType OR topic name (some encounters lack resourceType)
                 print(f"[DEBUG INGEST] Encounter received: topic={topic}, id={value.get('id')}")
                 storage.upsert_encounter(value, topic or "encounter")
-                state.handle_encounter(topic or "encounter", value)
-                print(f"[DEBUG INGEST] Encounter handled, emitting logs")
+                needs_reemit = state.handle_encounter(topic or "encounter", value)
+                print(f"[DEBUG INGEST] Encounter handled, needs_reemit={needs_reemit}")
             else:
                 # Event
                 state.handle_event(topic or value.get("eventType", "event"), value)

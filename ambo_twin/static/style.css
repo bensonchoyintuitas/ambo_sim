@@ -10,6 +10,28 @@ body {
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: 0.2px; }
 .brand .logo { filter: drop-shadow(0 1px 0 rgba(0,0,0,0.4)); }
 .leftbar { display: flex; align-items: center; gap: 16px; }
+.actions { display: flex; align-items: center; gap: 12px; }
+.actions-fixed { flex-wrap: nowrap; }
+.actions-dynamic { margin-left: auto; }
+
+.stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    font-size: 12px;
+}
+.stat-wide { max-width: 360px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat .label { opacity: 0.8; }
+.stat .sep { opacity: 0.4; }
+.stat .value.ok { color: #34d399; }
+/* colored numbers to match scene colors */
+.stat .value.value-ramp { color: #ef4444; }
+.stat .value.value-wait { color: #eab308; }
+.stat .value.value-treat { color: #60a5fa; }
+.stat .value.value-disc { color: #34d399; }
 .layout { position: relative; height: calc(100vh - 100px); padding: 12px 16px 16px 16px; overflow: hidden; }
 .stage { position: absolute; inset: 0 436px 0 0; }
 .scene-container { width: 100%; height: 100%; }

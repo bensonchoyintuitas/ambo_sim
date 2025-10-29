@@ -262,9 +262,37 @@
           const group = ensureHospitalGroup(hospital, hospitalPos);
           const layoutGridInRoom = (room, idx) => { const cols = 3; const gapX = Math.min(0.42, room.size.x / (cols + 1)); const gapZ = Math.min(0.42, room.size.z / (cols + 1)); const row = Math.floor(idx / cols); const col = idx % cols; const startX = room.center.x - (gapX * (cols - 1)) / 2; const startZ = room.center.z + room.size.z * 0.25; return new THREE.Vector3(startX + col * gapX, room.center.y, startZ - row * gapZ); };
           const syncPatients = (patients, room, colorHex, status, hospitalId) => {
-            patients.forEach((p, idx) => { let token = objectsRef.current.patientMeshes.get(p.id); if (!token) { const person = new THREE.Group(); const body = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.22, 14), new THREE.MeshStandardMaterial({ color: colorHex, emissive: colorHex, emissiveIntensity: 0.3 })); body.position.y = 0.22; const head = new THREE.Mesh(new THREE.SphereGeometry(0.085, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffe0bd })); head.position.y = 0.36; person.add(body, head); person.castShadow = true; person.receiveShadow = true; engineRef.current.scene.add(person); token = person; objectsRef.current.patientMeshes.set(p.id, person); }
+            patients.forEach((p, idx) => {
+              let token = objectsRef.current.patientMeshes.get(p.id);
+              if (!token) {
+                const person = new THREE.Group();
+                const body = new THREE.Mesh(
+                  new THREE.CylinderGeometry(0.11, 0.11, 0.22, 14),
+                  new THREE.MeshStandardMaterial({ color: colorHex, emissive: colorHex, emissiveIntensity: 0.3 })
+                );
+                body.position.y = 0.22;
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.085, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffe0bd }));
+                head.position.y = 0.36;
+                person.add(body, head);
+                person.castShadow = true; person.receiveShadow = true;
+                engineRef.current.scene.add(person);
+                token = person;
+                objectsRef.current.patientMeshes.set(p.id, person);
+              } else {
+                // Update color to reflect current status (waiting=yellow, treating=blue, discharged=green)
+                token.traverse((o) => {
+                  if (o.isMesh && o.material) {
+                    try { if (o.material.emissive) o.material.emissive.setHex(colorHex); } catch(e){}
+                    try { if (o.material.color) o.material.color.setHex(colorHex); } catch(e){}
+                  }
+                });
+              }
               token.userData.patient = { id: p.id, name: p.name, condition: p.condition, wait_time: p.wait_time, status, hospitalId };
-              const targetLocal = layoutGridInRoom(room, idx); const targetWorld = group.localToWorld(targetLocal.clone()); if (status === 'discharged') targetWorld.y -= 0.18; token.userData.target = targetWorld; if (!token.position || token.position.lengthSq() === 0) token.position.copy(targetWorld);
+              const targetLocal = layoutGridInRoom(room, idx);
+              const targetWorld = group.localToWorld(targetLocal.clone());
+              if (status === 'discharged') targetWorld.y -= 0.18;
+              token.userData.target = targetWorld;
+              if (!token.position || token.position.lengthSq() === 0) token.position.copy(targetWorld);
             });
           };
           syncPatients(hospital.waiting || [], group.userData.waitingRoom, 0xffd166, 'waiting', hospital.id);
@@ -347,11 +375,83 @@
       const [modalPayload, setModalPayload] = useState(null);
       const openJson = (payload) => { setModalPayload(payload); setModalOpen(true); };
       const closeJson = () => { setModalOpen(false); setModalPayload(null); };
+
+      const formatDuration = (totalSeconds) => {
+        const sec = Math.max(0, Math.floor(totalSeconds || 0));
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        const ss = String(s).padStart(2, '0');
+        return `${m}m ${ss}s`;
+      };
+
+      const stats = useMemo(() => {
+        // Longest waiting in room
+        let longestRoom = null;
+        let longestRoomHospital = null;
+        for (const h of state.hospitals || []) {
+          for (const p of h.waiting || []) {
+            if (!longestRoom || (p.wait_time || 0) > (longestRoom.wait_time || 0)) {
+              longestRoom = p; longestRoomHospital = h.id;
+            }
+          }
+        }
+
+        // Longest ramp wait (ambulance in orange with patient)
+        let longestRamp = null;
+        for (const a of state.ambulances || []) {
+          if (a.state === 'orange' && a.patient_id) {
+            if (!longestRamp || (a.ramp_wait_seconds || 0) > (longestRamp.ramp_wait_seconds || 0)) {
+              longestRamp = a;
+            }
+          }
+        }
+
+        // Aggregate summary counts
+        const rampCount = (state.ambulances || []).filter(a => a.state === 'orange' && a.patient_id).length;
+        const waitingCount = (state.hospitals || []).reduce((acc, h) => acc + ((h.waiting || []).length), 0);
+        const treatingCount = (state.hospitals || []).reduce((acc, h) => acc + ((h.treating || []).length), 0);
+        const dischargedCount = (state.hospitals || []).reduce((acc, h) => acc + ((h.discharged || []).length), 0);
+
+        return { longestRoom, longestRoomHospital, longestRamp, rampCount, waitingCount, treatingCount, dischargedCount };
+      }, [state]);
+
       return (
         <div className="app">
           <header className="topbar">
             <div className="leftbar">
               <div className="brand"><span className="logo">🧭</span><span>Ambo Twin</span></div>
+              <div className="actions actions-fixed">
+                <div className="stat" title="Patients ramping in ambulances">
+                  <span className="label">Ramp</span>
+                  <span className="value value-ramp">{stats.rampCount}</span>
+                </div>
+                <div className="stat" title="Patients waiting in rooms">
+                  <span className="label">Wait</span>
+                  <span className="value value-wait">{stats.waitingCount}</span>
+                </div>
+                <div className="stat" title="Patients currently being treated">
+                  <span className="label">Treat</span>
+                  <span className="value value-treat">{stats.treatingCount}</span>
+                </div>
+                <div className="stat" title="Patients discharged">
+                  <span className="label">Disc</span>
+                  <span className="value value-disc">{stats.dischargedCount}</span>
+                </div>
+              </div>
+            </div>
+            <div className="actions actions-dynamic">
+              <div className="stat stat-wide" title="Longest waiting in room">
+                <span className="label">Long wait</span>
+                <span className="value">{stats.longestRoom ? `${stats.longestRoom.name}@H${stats.longestRoomHospital}` : '—'}</span>
+                <span className="sep">·</span>
+                <span className="value">{stats.longestRoom ? `${stats.longestRoom.condition?.code?.display || 'Cond'} · ${formatDuration(stats.longestRoom.wait_time)}` : ''}</span>
+              </div>
+              <div className="stat stat-wide" title="Longest ramp wait with ambulance">
+                <span className="label">Ramp</span>
+                <span className="value">{stats.longestRamp ? `${stats.longestRamp.patient_name || 'Patient'}@H${stats.longestRamp.queue_hospital_id} A${stats.longestRamp.id}` : '—'}</span>
+                <span className="sep">·</span>
+                <span className="value">{stats.longestRamp ? `${stats.longestRamp.patient_condition_display || 'Cond'} · ${formatDuration(stats.longestRamp.ramp_wait_seconds)}` : ''}</span>
+              </div>
             </div>
           </header>
           <main className="layout">

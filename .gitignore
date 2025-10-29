@@ -10,3 +10,4 @@ tools/append_json_to_ods/.venv
 tools/vis/*.pbix
 tools/kafka_consumer_adls/azure_config.yml
 ambo_twin/data/twin.db
+ambo_twin/data/*
